@@ -1,8 +1,11 @@
 #pragma once
 
 #include "Utils/TCPSocket.hpp"
+#include "ClientController.hpp"
 #include <memory>
 #include <mutex>
+#include <map>
+#include <string>
 
 namespace Client {
 
@@ -13,10 +16,19 @@ public:
     ClientManager(const ClientManager &) = delete;
     ClientManager &operator=(const ClientManager &) = delete;
 
-    bool connectTo(const sf::IpAddress &address, unsigned short port);
-    void disconnect();
+    // Connect to the given address and create a controller with the given name.
+    bool connectTo(const std::string &name, const sf::IpAddress &address, unsigned short port);
+    // Disconnect and remove controller by name.
+    void disconnect(const std::string &name);
 
-    bool isConnected() const;
+    bool isConnected(const std::string &name) const;
+
+    // controller access
+    ClientController *getController(const std::string &name);
+
+    // Run the client: connect to server and perform a simple handshake (blocking).
+    // Returns 0 on success, non-zero on failure.
+    int run(const sf::IpAddress &address, unsigned short port);
 
     ~ClientManager();
 
@@ -29,9 +41,11 @@ private:
     // used for double-checked locking (check-then-lock-then-check)
     inline static std::mutex initMutex;
 
-    std::unique_ptr<Utils::TCPSocket> socket_;
-    // protects access to socket_ and other mutable internal state
-    // ensures only one thread can modify connection state at a time
+    // map of controller name -> controller (controllers reference the single socket_)
+    std::map<std::string, ClientController> controllers_;
+    // single shared socket to the server (shared with controllers)
+    std::shared_ptr<Utils::TCPSocket> socket_;
+    // protects access to maps and internal state
     mutable std::mutex mtx_;
 };
 

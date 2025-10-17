@@ -14,10 +14,10 @@ SRV_SRCS := $(wildcard $(SERVER_DIR)/src/*.cpp)
 CLI_SRCS := $(wildcard $(CLIENT_DIR)/src/*.cpp)
 
 $(BUILD_DIR)/rat_server: $(SRV_SRCS) | $(BUILD_DIR) $(BUILD_DIR)/libutils.so
-	$(CC) $(CFLAGS) -IUtils/include -I$(SERVER_DIR)/include -o $@ $^ -L$(BUILD_DIR) -lutils -lsfml-network -lsfml-system
+	$(CC) $(CFLAGS) -IUtils/include -I$(SERVER_DIR)/include -o $@ $^ -L$(BUILD_DIR) -lutils -lsfml-network -lsfml-system -Wl,-rpath,'$$ORIGIN'
 
 $(BUILD_DIR)/rat_client: $(CLI_SRCS) | $(BUILD_DIR) $(BUILD_DIR)/libutils.so
-	$(CC) $(CFLAGS) -IUtils/include -I$(CLIENT_DIR)/include -o $@ $^ -L$(BUILD_DIR) -lutils -lsfml-network -lsfml-system
+	$(CC) $(CFLAGS) -IUtils/include -I$(CLIENT_DIR)/include -o $@ $^ -L$(BUILD_DIR) -lutils -lsfml-network -lsfml-system -Wl,-rpath,'$$ORIGIN'
 
 $(BUILD_DIR)/libutils.so:
 	$(MAKE) -C Utils

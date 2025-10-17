@@ -12,9 +12,6 @@ OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
 all: $(OUT)
 
-test: $(OUT)
-	$(CC) -std=c++17 -Iinclude -o ../build_make/udp_test test/udp_test.cpp -L../build_make -lutils -lsfml-network -lsfml-system
-
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -26,6 +23,5 @@ $(OBJDIR):
 
 clean:
 	rm -rf $(OBJDIR) $(OUT)
-	rm -f ../build_make/udp_test
 
 .PHONY: all clean

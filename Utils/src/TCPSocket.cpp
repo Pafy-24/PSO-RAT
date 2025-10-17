@@ -46,4 +46,8 @@ void TCPSocket::close() {
     // listener_ has no explicit close in SFML 3, but can be left for destructor
 }
 
+void TCPSocket::setBlocking(bool blocking) {
+    socket_.setBlocking(blocking);
+}
+
 } // namespace Utils
