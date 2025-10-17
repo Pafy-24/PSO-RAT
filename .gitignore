@@ -1,3 +1,9 @@
+build/
+*.o
+*.exe
+*.log
+.vscode/
+*.swp
 # Prerequisites
 *.d
 
