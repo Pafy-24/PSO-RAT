@@ -48,98 +48,9 @@ bool ServerManager::start(unsigned short port) {
         controllers_.emplace("command", std::make_unique<ServerCommandController>(this));
         if (auto it = controllers_.find("log"); it != controllers_.end()) it->second->start();
         if (auto it = controllers_.find("command"); it != controllers_.end()) it->second->start();
-    // attempt to spawn two terminals (logs + admin) for convenience
-    spawnTerminalsForAdminAndLogs();
     return true;
 }
 
-// Try to open two terminal windows: one tails the log file, another connects via nc to admin port
-void ServerManager::spawnTerminalsForAdminAndLogs() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    if (!running_) return;
-    if (logPath_.empty()) logPath_ = "/tmp/rat_server.log";
-    unsigned short adminPort = port_ + 1;
-
-    // terminal candidates and command templates
-    const std::vector<std::pair<std::string, std::string>> emulators = {
-        {"gnome-terminal", "gnome-terminal -- bash -lc '%s; exec bash'"},
-        {"konsole", "konsole -e bash -lc '%s; exec bash'"},
-        {"xfce4-terminal", "xfce4-terminal -e bash -lc '%s; exec bash'"},
-        {"xterm", "xterm -e bash -lc '%s; exec bash'"},
-        {"alacritty", "alacritty -e bash -lc '%s; exec bash'"},
-        {"kitty", "kitty -- bash -lc '%s; exec bash'"}
-    };
-
-    auto findEmulator = [&]() -> std::pair<std::string,std::string> {
-        for (auto &p : emulators) {
-            std::string which = std::string("which ") + p.first + " >/dev/null 2>&1";
-            int rc = std::system(which.c_str());
-            if (rc == 0) return p; // return {name, template}
-        }
-        return {"", ""};
-    };
-
-    // check for graphical display (X11 or Wayland)
-    const char *displayEnv = std::getenv("DISPLAY");
-    const char *waylandEnv = std::getenv("WAYLAND_DISPLAY");
-    bool hasDisplay = (displayEnv != nullptr) || (waylandEnv != nullptr);
-
-    auto found = findEmulator();
-    std::string templateCmd = found.second;
-    std::string emulatorName = found.first;
-    if (templateCmd.empty() || !hasDisplay) {
-        // Try tmux fallback in headless or terminal-only environments
-        if (std::system("which tmux >/dev/null 2>&1") == 0) {
-            // create a detached tmux session named rat_server
-            std::ostringstream s1, s2, s3;
-            s1 << "tmux new-session -d -s rat_server 'tail -f " << logPath_ << "'";
-            s2 << "tmux split-window -h -t rat_server 'sleep 0.5; nc localhost " << adminPort << "'";
-            s3 << "tmux set-option -t rat_server remain-on-exit on";
-            int r1 = std::system(s1.str().c_str());
-            int r2 = std::system(s2.str().c_str());
-            int r3 = std::system(s3.str().c_str());
-            if (r1 == 0 && r2 == 0) {
-                pushLog("spawnTerminals: created tmux session 'rat_server' with logs and admin panes");
-            } else {
-                pushLog("spawnTerminals: failed to create tmux session");
-            }
-            return;
-        }
-        pushLog("spawnTerminals: no terminal emulator found on PATH and no tmux available");
-        return; // nothing available
-    }
-
-    // server command: tail -f the log file
-    std::ostringstream tailCmd;
-    tailCmd << "tail -f " << logPath_;
-
-    // admin command: nc localhost adminPort
-    std::ostringstream adminCmd;
-    adminCmd << "bash -lc 'sleep 0.5; echo Connecting to admin port " << adminPort << "; nc localhost " << adminPort << "; exec bash'";
-
-    // format and run (use setsid to detach)
-    auto runCmd = [&](const std::string &inner) {
-        std::string formatted;
-        // replace %s in templateCmd with inner
-        size_t pos = templateCmd.find("%s");
-        if (pos != std::string::npos) {
-            formatted = templateCmd.substr(0,pos) + inner + templateCmd.substr(pos+2);
-        } else {
-            formatted = templateCmd + " " + inner;
-        }
-        // final command: setsid sh -c '<formatted>' >/dev/null 2>&1 &
-        std::string final = "setsid sh -c '" + formatted + "' >/dev/null 2>&1 &";
-        int rc = std::system(final.c_str());
-        if (rc != 0) {
-            pushLog(std::string("spawnTerminals: failed to run: ") + emulatorName + " (rc=" + std::to_string(rc) + ")");
-        } else {
-            pushLog(std::string("spawnTerminals: launched ") + emulatorName);
-        }
-    };
-
-    runCmd(tailCmd.str());
-    runCmd(adminCmd.str());
-}
 
 void ServerManager::stop() {
     // acquire the lock to protect running_ and listener_ during stop
@@ -174,7 +85,7 @@ int ServerManager::run(unsigned short port) {
         {
             std::lock_guard<std::mutex> lock(mtx_);
             clients_[device] = std::move(client);
-            // create controller bound to manager and device name and start it
+            
             controllers_[device] = std::make_unique<ServerController>(this, device, clientPtr);
             if (auto it = controllers_.find(device); it != controllers_.end()) it->second->start();
         }

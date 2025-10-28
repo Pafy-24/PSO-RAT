@@ -8,7 +8,7 @@ CFLAGS := -std=c++17 -O2 -Wall -Wextra
 SERVER_DIR := RAT-Server
 CLIENT_DIR := RAT-Client
 
-all: $(BUILD_DIR)/libutils.so $(BUILD_DIR)/rat_server $(BUILD_DIR)/rat_client
+all: $(BUILD_DIR)/libutils.so $(BUILD_DIR)/rat_server $(BUILD_DIR)/rat_client $(BUILD_DIR)/log_script
 
 SRV_SRCS := $(wildcard $(SERVER_DIR)/src/*.cpp)
 CLI_SRCS := $(wildcard $(CLIENT_DIR)/src/*.cpp)
@@ -21,6 +21,9 @@ $(BUILD_DIR)/rat_client: $(CLI_SRCS) | $(BUILD_DIR) $(BUILD_DIR)/libutils.so
 
 $(BUILD_DIR)/libutils.so:
 	$(MAKE) -C Utils
+
+$(BUILD_DIR)/log_script:
+	$(MAKE) -C $(SERVER_DIR) $(BUILD_DIR)/log_script
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)

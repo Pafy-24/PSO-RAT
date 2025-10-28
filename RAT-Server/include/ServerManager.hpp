@@ -87,6 +87,9 @@ public:
     // access configured port
     unsigned short port() const { return port_; }
 
+    // access configured log path
+    const std::string &logPath() const { return logPath_; }
+
     // attempt to open two terminals: one tails logs, the other connects to admin port
     void spawnTerminalsForAdminAndLogs();
 };

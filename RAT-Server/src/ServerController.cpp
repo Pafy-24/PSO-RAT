@@ -62,11 +62,33 @@ void ServerController::start() {
         while (running_) {
             json in;
             if (receiveJson(in)) {
-                // if it's a ping reply or other message, push to server logs
-                if (manager_) {
-                    try {
-                        manager_->pushLog(deviceName_ + ": " + in.dump());
-                    } catch (...) {}
+                // if the message targets another controller, dispatch it
+                if (manager_ && in.contains("controller") && in["controller"].is_string()) {
+                    std::string target = in["controller"].get<std::string>();
+                    nlohmann::json params;
+                    if (in.contains("params")) params = in["params"];
+                    else params = in;
+                    IController *c = nullptr;
+                    // obtain controller by name
+                    if (manager_) c = manager_->getServerController(target);
+                    if (c) {
+                        try {
+                            if (!c->handleJson(params)) {
+                                manager_->pushLog(deviceName_ + ": controller '" + target + "' did not handle json: " + params.dump());
+                            }
+                        } catch (...) {
+                            manager_->pushLog(deviceName_ + ": exception while handling controller json");
+                        }
+                    } else {
+                        manager_->pushLog(deviceName_ + ": no such controller '" + target + "' for message: " + in.dump());
+                    }
+                } else {
+                    // if it's a ping reply or other message, push to server logs
+                    if (manager_) {
+                        try {
+                            manager_->pushLog(deviceName_ + ": " + in.dump());
+                        } catch (...) {}
+                    }
                 }
             } else {
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));

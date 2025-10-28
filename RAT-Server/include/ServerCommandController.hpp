@@ -22,6 +22,8 @@ private:
     ServerManager *manager_;
     bool running_ = false;
     std::unique_ptr<std::thread> thread_;
+    // thread for reading from stdin (interactive terminal)
+    std::unique_ptr<std::thread> stdinThread_;
 };
 
 } // namespace Server

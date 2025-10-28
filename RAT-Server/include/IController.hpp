@@ -19,6 +19,9 @@ public:
     // optional JSON send/receive for client controllers
     virtual bool sendJson(const nlohmann::json &) { return false; }
     virtual bool receiveJson(nlohmann::json &) { return false; }
+    // handle a JSON command directed to this controller (from another controller or from client)
+    // Return true if handled.
+    virtual bool handleJson(const nlohmann::json & /*params*/) { return false; }
 };
 
 } // namespace Server

