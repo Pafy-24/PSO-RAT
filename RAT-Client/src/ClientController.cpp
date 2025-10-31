@@ -32,4 +32,4 @@ bool ClientController::receiveJson(json &out) {
     return true;
 }
 
-} // namespace Client
+} 

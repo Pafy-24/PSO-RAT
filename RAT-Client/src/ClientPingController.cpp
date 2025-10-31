@@ -30,7 +30,7 @@ bool ClientPingController::pingUntilResponse(const std::string &name,
     unsigned short senderPort = 0;
         if (udpSocket_->receive(resp, sender, senderPort)) {
             if (resp == "pong") {
-                // server responded, establish TCP connection
+                
                 if (ClientManager::getInstance()->connectTo(name, serverIp, tcpPort)) {
                     return true;
                 }
@@ -42,4 +42,4 @@ bool ClientPingController::pingUntilResponse(const std::string &name,
     return false;
 }
 
-} // namespace Client
+} 

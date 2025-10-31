@@ -11,8 +11,8 @@ public:
     explicit ServerPingController(Utils::TCPSocket *sock);
     ~ServerPingController();
 
-    // Listen for UDP pings on udpPort and respond with "pong".
-    // Returns true if listener successfully started.
+    
+    
     bool startUdpResponder(unsigned short udpPort);
 
 private:
@@ -20,4 +20,4 @@ private:
     bool running_ = false;
 };
 
-} // namespace Server
+} 

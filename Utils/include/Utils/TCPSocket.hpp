@@ -18,12 +18,12 @@ public:
     bool send(const std::string &message);
     bool receive(std::string &out);
 
-    // allow switching blocking mode (used by controllers for non-blocking receive)
+    
     void setBlocking(bool blocking);
 
-    // server side
+    
     bool listen(unsigned short port);
-    // implement base Socket
+    
     bool bind(unsigned short port) override;
     std::unique_ptr<TCPSocket> accept();
 
@@ -34,4 +34,4 @@ private:
     sf::TcpListener listener_;
 };
 
-} // namespace Utils
+} 

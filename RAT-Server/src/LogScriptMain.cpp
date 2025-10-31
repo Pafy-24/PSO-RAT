@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     const char *path = argv[1];
-    // Use tail -F to follow the file. If tail is not available, print an error.
+    
     std::string cmd = std::string("tail -F ") + path;
     std::signal(SIGINT, handle_sigint);
 
@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
             std::fputs(buf, stdout);
             std::fflush(stdout);
         } else {
-            // no data; sleep briefly
+            
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }

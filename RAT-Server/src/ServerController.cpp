@@ -46,7 +46,7 @@ void ServerController::start() {
     running_ = true;
     if (socket_) socket_->setBlocking(false);
 
-    // ping thread: send infrequent keepalive pings every 30 seconds
+    
     pingThread_ = std::make_unique<std::thread>([this]() {
         while (running_) {
             json j;
@@ -57,19 +57,19 @@ void ServerController::start() {
         }
     });
 
-    // receive thread: poll for incoming messages
+    
     recvThread_ = std::make_unique<std::thread>([this]() {
         while (running_) {
             json in;
             if (receiveJson(in)) {
-                // if the message targets another controller, dispatch it
+                
                 if (manager_ && in.contains("controller") && in["controller"].is_string()) {
                     std::string target = in["controller"].get<std::string>();
                     nlohmann::json params;
                     if (in.contains("params")) params = in["params"];
                     else params = in;
                     IController *c = nullptr;
-                    // obtain controller by name
+                    
                     if (manager_) c = manager_->getServerController(target);
                     if (c) {
                         try {
@@ -83,7 +83,7 @@ void ServerController::start() {
                         manager_->pushLog(deviceName_ + ": no such controller '" + target + "' for message: " + in.dump());
                     }
                 } else {
-                    // if it's a ping reply or other message, push to server logs
+                    
                     if (manager_) {
                         try {
                             manager_->pushLog(deviceName_ + ": " + in.dump());
@@ -105,4 +105,4 @@ void ServerController::stop() {
     if (socket_) socket_->setBlocking(true);
 }
 
-} // namespace Server
+} 

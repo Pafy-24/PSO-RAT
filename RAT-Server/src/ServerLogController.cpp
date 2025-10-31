@@ -19,7 +19,7 @@ void ServerLogController::start() {
     running_ = true;
     thread_ = std::make_unique<std::thread>([this]() {
         while (running_) {
-            // pop logs from manager and print them
+            
             std::string log;
             while (manager_->popLog(log)) {
                 std::cout << "[LOG] " << log << std::endl;
@@ -36,7 +36,7 @@ void ServerLogController::stop() {
 }
 
 std::string ServerLogController::showLogs(const std::string &pathToLogFile) {
-    // Use a pseudo-terminal so the log program has a terminal to write to.
+    
     int master = -1, slave = -1;
     char slaveName[128] = {0};
     if (openpty(&master, &slave, slaveName, NULL, NULL) < 0) {
@@ -51,29 +51,29 @@ std::string ServerLogController::showLogs(const std::string &pathToLogFile) {
         return std::string();
     }
     if (pid == 0) {
-        // child
-        // create new session and set slave pty as controlling terminal
+        
+        
         setsid();
-        // dup slave to stdin/out/err
+        
         close(master);
         if (dup2(slave, STDIN_FILENO) < 0) _exit(127);
         if (dup2(slave, STDOUT_FILENO) < 0) _exit(127);
         if (dup2(slave, STDERR_FILENO) < 0) _exit(127);
         if (slave > STDERR_FILENO) close(slave);
 
-        // exec the log_script binary
+        
         const char *prog = "../build_make/log_script";
         char *const argv[] = { (char*)prog, (char*)pathToLogFile.c_str(), NULL };
         execv(prog, argv);
-        // if exec fails
+        
         std::cerr << "Failed to exec " << prog << ": " << std::strerror(errno) << std::endl;
         _exit(127);
     }
 
-    // parent: close master fd; the child owns the slave as its tty. Return the slave path.
+    
     close(master);
-    // DO NOT close slave here if we want the slave node path to remain usable — closing is fine,
-    // the tty device remains; the child has it open.
+    
+    
     close(slave);
     manager_->pushLog(std::string("ServerLogController::showLogs: spawned log_script pid=") + std::to_string(pid));
     return std::string(slaveName);
@@ -99,4 +99,4 @@ bool ServerLogController::handleJson(const nlohmann::json &params) {
     return false;
 }
 
-} // namespace Server
+} 

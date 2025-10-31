@@ -37,17 +37,17 @@ std::unique_ptr<TCPSocket> TCPSocket::accept() {
 }
 
 bool TCPSocket::bind(unsigned short port) {
-    // Bind for TCP is equivalent to listening on the port for incoming connections
+    
     return listen(port);
 }
 
 void TCPSocket::close() {
     socket_.disconnect();
-    // listener_ has no explicit close in SFML 3, but can be left for destructor
+    
 }
 
 void TCPSocket::setBlocking(bool blocking) {
     socket_.setBlocking(blocking);
 }
 
-} // namespace Utils
+} 
