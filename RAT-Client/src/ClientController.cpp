@@ -18,7 +18,7 @@ bool ClientController::sendJson(const json &obj) {
     if (!socket_) return false;
     try {
         std::string s = obj.dump();
-        if (s.size() > 10 * 1024 * 1024) return false;
+        if (s.size() > 100 * 1024 * 1024) return false;
         return socket_->send(s);
     } catch (...) {
         return false;
@@ -31,7 +31,7 @@ bool ClientController::receiveJson(json &out) {
     std::string s;
     if (!socket_->receive(s)) return false;
     if (s.empty()) return false;
-    if (s.size() > 10 * 1024 * 1024) return false;
+    if (s.size() > 100 * 1024 * 1024) return false;
     try {
         out = json::parse(s);
     } catch (...) {

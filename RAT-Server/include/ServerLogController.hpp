@@ -3,16 +3,15 @@
 #include <string>
 #include <memory>
 #include <thread>
-
 #include <atomic>
 #include <chrono>
-#include "ServerController.hpp"
+#include "IController.hpp"
 
 namespace Server {
 
 class ServerManager;
 
-class ServerLogController : public ServerController {
+class ServerLogController : public IController {
 public:
     explicit ServerLogController(ServerManager *manager);
     ~ServerLogController();
@@ -22,13 +21,10 @@ public:
     
     void stop() override;
     
-    
-    
-    
     std::string showLogs(const std::string &pathToLogFile);
-
+    void tailLogs(const std::string &pathToLogFile, int numLines = 50);
     
-    
+    void handle(const nlohmann::json &packet) override;
     bool handleJson(const nlohmann::json &params) override;
     
     std::string getHandle() const override { return "log"; }

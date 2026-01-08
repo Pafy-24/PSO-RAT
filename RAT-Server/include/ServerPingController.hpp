@@ -20,6 +20,8 @@ public:
     void start() override;
     void stop() override;
     
+    void handle(const nlohmann::json &packet) override;
+    
     std::string getHandle() const override { return "ping"; }
 
 private:

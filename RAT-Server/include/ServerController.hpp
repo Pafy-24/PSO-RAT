@@ -32,7 +32,9 @@ public:
     void start() override;
     void stop() override;
     
-    std::string getHandle() const override { return "bash"; }
+    void handle(const nlohmann::json &packet) override;
+    
+    std::string getHandle() const override { return deviceName_; }
 
 private:
     Utils::TCPSocket *socket_;

@@ -27,6 +27,7 @@ public:
     bool bind(unsigned short port) override;
     std::unique_ptr<TCPSocket> accept();
 
+    std::string getRemoteAddress() const;
     void close() override;
 
 private:

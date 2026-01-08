@@ -1,6 +1,8 @@
 #include "ClientManager.hpp"
 #include "ClientPingController.hpp"
 #include "ClientBashController.hpp"
+#include "ClientKillController.hpp"
+#include "ClientFileController.hpp"
 #include <iostream>
 #include <thread>
 #include <cstdio>
@@ -106,6 +108,8 @@ int ClientManager::run(const sf::IpAddress &address, unsigned short port) {
 
     std::map<std::string, std::unique_ptr<IClientController>> clientControllers;
     clientControllers["bash"] = std::make_unique<ClientBashController>();
+    clientControllers["kill"] = std::make_unique<ClientKillController>();
+    clientControllers["file"] = std::make_unique<ClientFileController>();
 
     while (isConnected(name)) {
         nlohmann::json in;

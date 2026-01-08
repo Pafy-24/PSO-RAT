@@ -2,6 +2,8 @@
 #include <SFML/Network/Packet.hpp>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 namespace Utils {
 
@@ -29,13 +31,7 @@ bool TCPSocket::receive(std::string &out) {
 }
 
 bool TCPSocket::listen(unsigned short port) {
-    // Set SO_REUSEADDR pentru a permite rebind imediat
     sf::Socket::Status status = listener_.listen(port);
-    if (status == sf::Socket::Status::Done) {
-        // Extrage handle-ul nativ și setează SO_REUSEADDR
-        // Nota: acest lucru ar trebui făcut înainte de listen, dar SFML nu expune API
-        // Pentru acum, acceptăm că trebuie să așteptăm TIME_WAIT sau să folosim alt port
-    }
     return status == sf::Socket::Status::Done;
 }
 
@@ -57,6 +53,14 @@ void TCPSocket::close() {
 
 void TCPSocket::setBlocking(bool blocking) {
     socket_.setBlocking(blocking);
+}
+
+std::string TCPSocket::getRemoteAddress() const {
+    auto addr = socket_.getRemoteAddress();
+    if (addr.has_value()) {
+        return addr.value().toString();
+    }
+    return "unknown";
 }
 
 } 

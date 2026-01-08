@@ -1,6 +1,7 @@
 #include "ServerController.hpp"
 #include "IController.hpp"
 #include "ServerManager.hpp"
+#include "ServerFileController.hpp"
 #include <thread>
 #include <atomic>
 #include <chrono>
@@ -26,7 +27,7 @@ bool ServerController::sendJson(const json &obj) {
     if (!socket_) return false;
     try {
         std::string s = obj.dump();
-        if (s.size() > 1024 * 1024) {
+        if (s.size() > 100 * 1024 * 1024) {
             if (manager_) manager_->pushLog(deviceName_ + ": outgoing message too large");
             return false;
         }
@@ -46,7 +47,7 @@ bool ServerController::receiveJson(json &out) {
     std::string s;
     if (!socket_->receive(s)) return false;
     if (s.empty()) return false;
-    if (s.size() > 1024 * 1024) {
+    if (s.size() > 100 * 1024 * 1024) {
         if (manager_) manager_->pushLog(deviceName_ + ": message too large: " + std::to_string(s.size()));
         return false;
     }
@@ -60,6 +61,12 @@ bool ServerController::receiveJson(json &out) {
         return false;
     }
     return true;
+}
+
+void ServerController::handle(const nlohmann::json &packet) {
+    // ServerController handles client-to-server communication
+    // Individual packet processing is done in recvThread_ routing
+    (void)packet;
 }
 
 void ServerController::start() {
@@ -96,6 +103,7 @@ void ServerController::start() {
             json in;
             if (receiveJson(in)) {
                 if (manager_) {
+                    // Log received message
                     try {
                         std::string prefix = deviceName_;
                         if (in.contains("controller") && in["controller"].is_string()) {
@@ -104,6 +112,17 @@ void ServerController::start() {
                         manager_->pushLog(prefix + ": " + in.dump());
                     } catch (...) {
                         manager_->pushLog(deviceName_ + ": [invalid JSON]");
+                    }
+                    
+                    // Route to appropriate controller
+                    if (in.contains("controller") && in["controller"].is_string()) {
+                        std::string ctrlHandle = in["controller"].get<std::string>();
+                        in["clientName"] = deviceName_;
+                        
+                        IController* handler = manager_->getControllerByHandle(ctrlHandle);
+                        if (handler) {
+                            handler->handle(in);  // Route to controller (bash, file, etc)
+                        }
                     }
                 }
             } else {

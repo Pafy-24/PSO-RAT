@@ -11,8 +11,13 @@
 
 namespace Server {
 
-ServerLogController::ServerLogController(ServerManager *manager) : ServerController(nullptr), manager_(manager) {}
+ServerLogController::ServerLogController(ServerManager *manager) : IController(manager), manager_(manager) {}
 ServerLogController::~ServerLogController() { stop(); }
+
+void ServerLogController::handle(const nlohmann::json &packet) {
+    // LogController doesn't process incoming packets
+    (void)packet;
+}
 
 void ServerLogController::start() {
     if (running_) return;
@@ -73,6 +78,25 @@ std::string ServerLogController::showLogs(const std::string &pathToLogFile) {
     close(slave);
     if (manager_) manager_->pushLog(std::string("ServerLogController::showLogs: spawned log_script pid=") + std::to_string(pid));
     return std::string(slaveName);
+}
+
+void ServerLogController::tailLogs(const std::string &pathToLogFile, int numLines) {
+    std::string cmd = "tail -n " + std::to_string(numLines) + " " + pathToLogFile;
+    FILE *pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
+        std::cout << "Failed to read log file: " << pathToLogFile << std::endl;
+        return;
+    }
+    
+    std::cout << "\n=== Last " << numLines << " lines from " << pathToLogFile << " ===\n" << std::endl;
+    
+    char buf[1024];
+    while (fgets(buf, sizeof(buf), pipe) != nullptr) {
+        std::cout << buf;
+    }
+    
+    pclose(pipe);
+    std::cout << "\n=== End of logs ===\n" << std::endl;
 }
 
 bool ServerLogController::handleJson(const nlohmann::json &params) {
