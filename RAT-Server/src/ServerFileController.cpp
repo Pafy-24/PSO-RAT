@@ -60,21 +60,14 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
     if (remotePath.empty()) return "Usage: download [client] <remote_path> <local_path>\n";
     if (localPath.empty()) return "Usage: download [client] <remote_path> <local_path>\n";
     
-    auto ctrl = manager_->getServerController(clientName);
-    if (!ctrl) return "Failed to get controller\n";
+    if (!manager_->hasClient(clientName)) return "Client not found\n";
     
     nlohmann::json cmd;
     cmd["controller"] = "file";
     cmd["action"] = "download";
     cmd["path"] = remotePath;
     
-    // Clear previous response BEFORE sending
-    {
-        std::lock_guard<std::mutex> lock(responseMtx_);
-        hasResponse_ = false;
-    }
-    
-    if (!ctrl->sendJson(cmd)) {
+    if (!manager_->sendRequest(clientName, cmd)) {
         return "Failed to send download command\n";
     }
     
@@ -98,21 +91,10 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
     auto endTime = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     
     while (!received && !cancelled) {
-        // Check for response
-        {
-            std::unique_lock<std::mutex> lock(responseMtx_);
-            if (responseCv_.wait_for(lock, std::chrono::milliseconds(50), [this]{ return hasResponse_; })) {
-                if (pendingResponse_.contains("clientName") && 
-                    pendingResponse_["clientName"].get<std::string>() == clientName &&
-                    pendingResponse_.contains("action") &&
-                    pendingResponse_["action"].get<std::string>() == "download") {
-                    response = pendingResponse_;
-                    hasResponse_ = false;
-                    received = true;
-                    break;
-                }
-                hasResponse_ = false;
-            }
+        // Try to receive response with short timeout
+        if (manager_->receiveResponse(clientName, response, 100)) {
+            received = true;
+            break;
         }
         
         char ch;
@@ -244,8 +226,7 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     if (valb > -6) encoded.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
     while (encoded.size() % 4) encoded.push_back('=');
     
-    auto ctrl = manager_->getServerController(clientName);
-    if (!ctrl) return "Failed to get controller\n";
+    if (!manager_->hasClient(clientName)) return "Client not found\n";
     
     std::string actualRemotePath = remotePath;
     if (remotePath == "." || remotePath.back() == '/' || remotePath.find('.') == std::string::npos) {
@@ -266,13 +247,7 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     cmd["path"] = actualRemotePath;
     cmd["data"] = encoded;
     
-    // Clear previous response BEFORE sending
-    {
-        std::lock_guard<std::mutex> lock(responseMtx_);
-        hasResponse_ = false;
-    }
-    
-    if (!ctrl->sendJson(cmd)) {
+    if (!manager_->sendRequest(clientName, cmd)) {
         return "Failed to send upload command\n";
     }
     
@@ -296,21 +271,10 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     auto endTime = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     
     while (!received && !cancelled) {
-        // Check for response
-        {
-            std::unique_lock<std::mutex> lock(responseMtx_);
-            if (responseCv_.wait_for(lock, std::chrono::milliseconds(50), [this]{ return hasResponse_; })) {
-                if (pendingResponse_.contains("clientName") && 
-                    pendingResponse_["clientName"].get<std::string>() == clientName &&
-                    pendingResponse_.contains("action") &&
-                    pendingResponse_["action"].get<std::string>() == "upload") {
-                    response = pendingResponse_;
-                    hasResponse_ = false;
-                    received = true;
-                    break;
-                }
-                hasResponse_ = false;
-            }
+        // Try to receive response with short timeout
+        if (manager_->receiveResponse(clientName, response, 100)) {
+            received = true;
+            break;
         }
         
         char ch;

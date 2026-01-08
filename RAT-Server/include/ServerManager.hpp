@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Utils/TCPSocket.hpp"
-#include "ServerController.hpp"
-#include "ServerCommandController.hpp"
-#include "ServerLogController.hpp"
+#include "IController.hpp"
+#include "ClientManagement.hpp"
+#include <nlohmann/json.hpp>
 #include <memory>
 #include <mutex>
 #include <map>
@@ -57,11 +57,13 @@ public:
     // ========================================================================
     // Controller Access & Routing
     // ========================================================================
-    IController *getController(const std::string &deviceName);
-    ServerController *getServerController(const std::string &deviceName);
-    IController *getControllerByHandle(const std::string &handle);
     IController *getSystemController(const std::string &handle);
     
+    // ========================================================================
+    // Centralized Client Communication
+    // ========================================================================
+    bool sendRequest(const std::string &clientName, const nlohmann::json &request);
+    bool receiveResponse(const std::string &clientName, nlohmann::json &response, int timeoutMs = 5000);
 
 
     // ========================================================================
@@ -94,16 +96,14 @@ private:
     mutable std::mutex mtx_;                        // Main state mutex
 
     // ========================================================================
-    // Client Registry
+    // Client Management
     // ========================================================================
-    std::map<std::string, std::unique_ptr<Utils::TCPSocket>> clients_;  // deviceName -> socket
-    std::map<std::string, std::string> clientIPs_;                      // deviceName -> IP address
+    std::unique_ptr<ClientManagement> clientManagement_;
     
-    // System controllers (log, bash, file, ping)
+    // ========================================================================
+    // System Controllers
+    // ========================================================================
     std::map<std::string, std::unique_ptr<IController>> controllers_;   // handle -> controller
-    
-    // Per-client controllers (TCP communication per client)
-    std::map<std::string, std::unique_ptr<ServerController>> clientControllers_;  // deviceName -> controller
 
 
 
@@ -117,9 +117,8 @@ private:
     // ========================================================================
     // Helper Functions
     // ========================================================================
-    void initializeControllers();                   // Initialize system controllers
+    void initializeControllers(unsigned short port); // Initialize system controllers
     void cleanupResources();                        // Cleanup on shutdown
-    std::string generateUniqueDeviceName(const std::string& base, int& counter);
     void handleNewClientConnection(std::unique_ptr<Utils::TCPSocket> client, int& unknownCount);
 };
 

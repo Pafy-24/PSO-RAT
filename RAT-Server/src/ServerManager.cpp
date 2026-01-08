@@ -1,4 +1,6 @@
 #include "ServerManager.hpp"
+#include "ServerCommandController.hpp"
+#include "ServerLogController.hpp"
 #include "ServerPingController.hpp"
 #include "ServerFileController.hpp"
 #include <iostream>
@@ -22,7 +24,10 @@ std::shared_ptr<ServerManager> ServerManager::getInstance() {
     return ServerManager::instance;
 }
 
-ServerManager::ServerManager() = default;
+ServerManager::ServerManager() {
+    // Initialize client management
+    clientManagement_ = std::make_unique<ClientManagement>(this);
+}
 
 ServerManager::~ServerManager() {
     stop();
@@ -36,32 +41,37 @@ ServerManager::~ServerManager() {
 // ============================================================================
 
 bool ServerManager::start(unsigned short port) {
-    std::lock_guard<std::mutex> lock(mtx_);
+    unsigned short localPort = 0;
     
-    if (running_) {
-        std::cerr << "Error: Server is already running" << std::endl;
-        return false;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        
+        if (running_) {
+            std::cerr << "Error: Server is already running" << std::endl;
+            return false;
+        }
+        
+        // Initialize listener socket
+        listener_ = std::make_unique<Utils::TCPSocket>();
+        if (!listener_->bind(port)) {
+            std::cerr << "Failed to bind listener socket to port " << port << std::endl;
+            std::cerr << "Possible causes:" << std::endl;
+            std::cerr << "  - Port already in use (check with: lsof -i :" << port << ")" << std::endl;
+            std::cerr << "  - Socket in TIME_WAIT state (wait ~60s or run: sudo fuser -k " << port << "/tcp)" << std::endl;
+            std::cerr << "  - Insufficient permissions (ports < 1024 need root)" << std::endl;
+            std::cerr << "  - Firewall blocking the port" << std::endl;
+            listener_.reset();
+            return false;
+        }
+        
+        port_ = port;
+        localPort = port;
+        running_ = true;
+        std::cout << "Server started successfully on port " << port << std::endl;
     }
     
-    // Initialize listener socket
-    listener_ = std::make_unique<Utils::TCPSocket>();
-    if (!listener_->bind(port)) {
-        std::cerr << "Failed to bind listener socket to port " << port << std::endl;
-        std::cerr << "Possible causes:" << std::endl;
-        std::cerr << "  - Port already in use (check with: lsof -i :" << port << ")" << std::endl;
-        std::cerr << "  - Socket in TIME_WAIT state (wait ~60s or run: sudo fuser -k " << port << "/tcp)" << std::endl;
-        std::cerr << "  - Insufficient permissions (ports < 1024 need root)" << std::endl;
-        std::cerr << "  - Firewall blocking the port" << std::endl;
-        listener_.reset();
-        return false;
-    }
-    
-    port_ = port;
-    running_ = true;
-    std::cout << "Server started successfully on port " << port << std::endl;
-    
-    // Initialize system controllers
-    initializeControllers();
+    // Initialize system controllers AFTER releasing mutex to avoid deadlock
+    initializeControllers(localPort);
     
     return true;
 }
@@ -123,108 +133,67 @@ int ServerManager::run(unsigned short port) {
 // ============================================================================
 
 bool ServerManager::addClient(const std::string &deviceName, std::unique_ptr<Utils::TCPSocket> socket) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    
-    // Validate input
-    if (!socket) {
-        pushLog("Failed to add client " + deviceName + ": null socket");
-        return false;
-    }
-    
-    if (clients_.find(deviceName) != clients_.end()) {
-        pushLog("Failed to add client " + deviceName + ": name already exists");
-        return false;
-    }
-    
-    // Register client and create controller
-    Utils::TCPSocket *sockPtr = socket.get();
-    std::string clientIP = socket->getRemoteAddress();
-    
-    clients_[deviceName] = std::move(socket);
-    clientIPs_[deviceName] = clientIP;
-    clientControllers_[deviceName] = std::make_unique<ServerController>(this, deviceName, sockPtr);
-    
-    // Start controller
-    if (auto it = clientControllers_.find(deviceName); it != clientControllers_.end()) {
-        it->second->start();
-    }
-    
-    pushLog("Client connected: " + deviceName + " (" + clientIP + ")");
-    return true;
+    return clientManagement_ ? clientManagement_->addClient(deviceName, std::move(socket)) : false;
 }
 
 bool ServerManager::removeClient(const std::string &deviceName) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    
-    auto it = clients_.find(deviceName);
-    if (it == clients_.end()) {
-        return false;
-    }
-    
-    // Stop controller first to ensure background threads are joined
-    auto cit = clientControllers_.find(deviceName);
-    if (cit != clientControllers_.end()) {
-        if (cit->second) {
-            cit->second->stop();
-        }
-        clientControllers_.erase(cit);
-    }
-    
-    // Close and remove socket
-    if (it->second) {
-        it->second->close();
-    }
-    clients_.erase(it);
-    
-    // Remove IP mapping
-    clientIPs_.erase(deviceName);
-    
-    pushLog("Client removed: " + deviceName);
-    return true;
+    return clientManagement_ ? clientManagement_->removeClient(deviceName) : false;
 }
 
 Utils::TCPSocket *ServerManager::getClient(const std::string &deviceName) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    
-    auto it = clients_.find(deviceName);
-    if (it == clients_.end()) {
-        return nullptr;
-    }
-    
-    return it->second.get();
+    return clientManagement_ ? clientManagement_->getClient(deviceName) : nullptr;
 }
 
 // ============================================================================
 // Controller Access
 // ============================================================================
 
-IController *ServerManager::getController(const std::string &deviceName) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    auto it = clientControllers_.find(deviceName);
-    if (it == clientControllers_.end()) return nullptr;
-    return it->second.get();
-}
-
-ServerController *ServerManager::getServerController(const std::string &deviceName) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    auto it = clientControllers_.find(deviceName);
-    if (it == clientControllers_.end()) return nullptr;
-    return it->second.get();
-}
-
-IController *ServerManager::getControllerByHandle(const std::string &handle) {
-    // First check system controllers
-    IController* ctrl = getSystemController(handle);
-    if (ctrl) return ctrl;
-    
-    // Then check client controllers by device name
-    return getController(handle);
-}
-
 IController *ServerManager::getSystemController(const std::string &handle) {
     std::lock_guard<std::mutex> lock(mtx_);
     auto it = controllers_.find(handle);
     return (it != controllers_.end()) ? it->second.get() : nullptr;
+}
+
+// ============================================================================
+// Communication
+// ============================================================================
+
+bool ServerManager::sendRequest(const std::string& clientName, const nlohmann::json& request) {
+    if (!clientManagement_) return false;
+    
+    auto* client = clientManagement_->getClient(clientName);
+    if (!client) return false;
+    
+    std::string jsonStr = request.dump();
+    
+    // Log outgoing request
+    pushLog("→ " + clientName + ": " + jsonStr);
+    
+    return client->send(jsonStr);
+}
+
+bool ServerManager::receiveResponse(const std::string& clientName, nlohmann::json& response, int timeoutMs) {
+    (void)timeoutMs; // Unused for now
+    
+    if (!clientManagement_) return false;
+    
+    auto* client = clientManagement_->getClient(clientName);
+    if (!client) return false;
+    
+    std::string jsonStr;
+    if (client->receive(jsonStr)) {
+        try {
+            response = nlohmann::json::parse(jsonStr);
+            
+            // Log incoming response
+            pushLog("← " + clientName + ": " + jsonStr);
+            
+            return true;
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to parse response: " << e.what() << std::endl;
+        }
+    }
+    return false;
 }
 
 // ============================================================================
@@ -255,29 +224,23 @@ bool ServerManager::popLog(std::string &out) {
 // ============================================================================
 
 std::vector<std::string> ServerManager::listClients() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    std::vector<std::string> names;
-    for (auto &p : clients_) names.push_back(p.first);
-    return names;
+    return clientManagement_ ? clientManagement_->listClients() : std::vector<std::string>();
 }
 
 std::string ServerManager::getClientIP(const std::string &name) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    auto it = clientIPs_.find(name);
-    return (it != clientIPs_.end()) ? it->second : "unknown";
+    return clientManagement_ ? clientManagement_->getClientIP(name) : "unknown";
 }
 
 bool ServerManager::hasClient(const std::string &name) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    return clients_.find(name) != clients_.end();
+    return clientManagement_ ? clientManagement_->hasClient(name) : false;
 }
 
 // ============================================================================
 // Helper Functions (Private)
 // ============================================================================
 
-void ServerManager::initializeControllers() {
-    // Note: mtx_ must be locked before calling this function
+void ServerManager::initializeControllers(unsigned short port) {
+    // Note: This function must be called WITHOUT holding mtx_ to avoid deadlock
     
     // Create and start log controller
     controllers_.emplace("log", std::make_unique<ServerLogController>(this));
@@ -299,7 +262,7 @@ void ServerManager::initializeControllers() {
     
     // Create and start ping controller (UDP discovery)
     auto pingController = std::make_unique<ServerPingController>(this);
-    if (pingController->startUdpResponder(port_)) {
+    if (pingController->startUdpResponder(port)) {
         controllers_.emplace("ping", std::move(pingController));
     } else {
         std::cerr << "Warning: Failed to start UDP ping responder" << std::endl;
@@ -307,53 +270,30 @@ void ServerManager::initializeControllers() {
 }
 
 void ServerManager::cleanupResources() {
-    // Note: mtx_ must be locked before calling this function
-    
-    // Stop all system controllers
-    for (auto &p : controllers_) {
-        if (p.second) {
-            p.second->stop();
+    // Stop all controllers
+    for (auto &[name, controller] : controllers_) {
+        if (controller) {
+            controller->stop();
         }
     }
     controllers_.clear();
     
-    // Stop all client controllers
-    for (auto &p : clientControllers_) {
-        if (p.second) {
-            p.second->stop();
-        }
+    // Cleanup all client connections
+    if (clientManagement_) {
+        clientManagement_->cleanup();
     }
-    clientControllers_.clear();
-    
-    // Close all client connections
-    for (auto &p : clients_) {
-        if (p.second) {
-            p.second->close();
-        }
-    }
-    clients_.clear();
-    clientIPs_.clear();
-}
-
-std::string ServerManager::generateUniqueDeviceName(const std::string& base, int& counter) {
-    // Note: mtx_ must be locked before calling this function
-    
-    std::string name = base;
-    while (clients_.find(name) != clients_.end()) {
-        name = base + "_" + std::to_string(++counter);
-    }
-    return name;
 }
 
 void ServerManager::handleNewClientConnection(std::unique_ptr<Utils::TCPSocket> client, int& unknownCount) {
     if (!client) return;
     
-    // Set blocking mode for initial handshake
+    // Set blocking mode for handshake
     client->setBlocking(true);
     
-    // Try to receive hostname from client
+    // Receive and parse handshake message
     std::string deviceName;
     std::string jsonStr;
+    
     if (client->receive(jsonStr)) {
         try {
             nlohmann::json initMsg = nlohmann::json::parse(jsonStr);
@@ -361,8 +301,12 @@ void ServerManager::handleNewClientConnection(std::unique_ptr<Utils::TCPSocket> 
                 deviceName = initMsg["hostname"].get<std::string>();
             }
         } catch (const std::exception& e) {
-            pushLog("Failed to parse client init message: " + std::string(e.what()));
+            std::cerr << "Handshake parse error: " << e.what() << std::endl;
+            pushLog("Failed to parse handshake from " + client->getRemoteAddress());
         }
+    } else {
+        std::cerr << "Failed to receive handshake from " << client->getRemoteAddress() << std::endl;
+        return;
     }
     
     // Generate device name if not provided
@@ -370,28 +314,22 @@ void ServerManager::handleNewClientConnection(std::unique_ptr<Utils::TCPSocket> 
         deviceName = "unknown" + std::to_string(++unknownCount);
     }
     
-    // Ensure unique device name
-    {
-        std::lock_guard<std::mutex> lock(mtx_);
-        deviceName = generateUniqueDeviceName(deviceName, unknownCount);
+    // Ensure device name is unique
+    int counter = unknownCount;
+    if (clientManagement_) {
+        deviceName = clientManagement_->generateUniqueDeviceName(deviceName, counter);
+        unknownCount = counter;
     }
     
-    // Register client and create controller
-    Utils::TCPSocket *clientPtr = client.get();
-    std::string clientIP = client->getRemoteAddress();
-    
-    {
-        std::lock_guard<std::mutex> lock(mtx_);
-        clients_[deviceName] = std::move(client);
-        clientIPs_[deviceName] = clientIP;
-        clientControllers_[deviceName] = std::make_unique<ServerController>(this, deviceName, clientPtr);
-        
-        if (auto it = clientControllers_.find(deviceName); it != clientControllers_.end()) {
-            it->second->start();
+    // Register client
+    if (clientManagement_) {
+        if (clientManagement_->addClient(deviceName, std::move(client))) {
+            std::cout << "Client registered: " << deviceName << std::endl;
+        } else {
+            std::cerr << "Failed to register client: " << deviceName << std::endl;
         }
     }
-    
-    pushLog("New client connected: " + deviceName + " (" + clientIP + ")");
 }
+
 
 } 

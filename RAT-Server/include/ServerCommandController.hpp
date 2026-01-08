@@ -45,6 +45,7 @@ private:
     std::string handleKill(const std::string &name);
     std::string handleKillAll();
     std::string handleBash(const std::string &name, const std::string &cmd);
+    std::string handleScreenshot(const std::string &name);
     std::string handleQuit();
     std::string handleShowLogs();
     

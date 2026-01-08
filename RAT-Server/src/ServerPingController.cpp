@@ -1,5 +1,6 @@
 #include "ServerPingController.hpp"
 #include "ServerManager.hpp"
+#include "ServerLogController.hpp"
 #include <thread>
 #include <chrono>
 
@@ -20,10 +21,10 @@ void ServerPingController::handle(const nlohmann::json &packet) {
 void ServerPingController::start() {
     if (running_) return;
     running_ = true;
+    // UDP responder thread is started by startUdpResponder()
 }
 
 void ServerPingController::stop() {
-    if (!running_) return;
     running_ = false;
     if (udpThread_ && udpThread_->joinable()) {
         udpThread_->join();
@@ -37,7 +38,9 @@ bool ServerPingController::startUdpResponder(unsigned short udpPort) {
     
     if (!udpSocket_->bind(udpPort)) {
         if (manager_) {
-            manager_->pushLog("Failed to bind UDP port " + std::to_string(udpPort) + " for discovery");
+            if (auto log = manager_->getSystemController("log")) {
+                static_cast<ServerLogController*>(log)->pushLog("Failed to bind UDP port " + std::to_string(udpPort) + " for discovery");
+            }
         }
         return false;
     }
@@ -55,7 +58,9 @@ bool ServerPingController::startUdpResponder(unsigned short udpPort) {
                     udpSocket_->sendTo(std::string("pong"), sender, port);
                     
                     if (manager_) {
-                        manager_->pushLog("UDP discovery ping from " + sender.toString());
+                        if (auto log = manager_->getSystemController("log")) {
+                            static_cast<ServerLogController*>(log)->pushLog("UDP discovery ping from " + sender.toString());
+                        }
                     }
                 }
             } else {
@@ -65,7 +70,9 @@ bool ServerPingController::startUdpResponder(unsigned short udpPort) {
     });
     
     if (manager_) {
-        manager_->pushLog("UDP discovery responder started on port " + std::to_string(udpPort));
+        if (auto log = manager_->getSystemController("log")) {
+            static_cast<ServerLogController*>(log)->pushLog("UDP discovery responder started on port " + std::to_string(udpPort));
+        }
     }
     
     return true;

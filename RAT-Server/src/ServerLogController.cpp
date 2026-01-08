@@ -2,6 +2,7 @@
 #include "ServerManager.hpp"
 #include <iostream>
 #include <queue>
+#include <fstream>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -22,17 +23,11 @@ void ServerLogController::handle(const nlohmann::json &packet) {
 void ServerLogController::start() {
     if (running_) return;
     running_ = true;
-    thread_ = std::make_unique<std::thread>([this]() {
-        while (running_) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        }
-    });
+    // No thread needed - logs are pushed/popped directly
 }
 
 void ServerLogController::stop() {
-    if (!running_) return;
     running_ = false;
-    if (thread_ && thread_->joinable()) thread_->join();
 }
 
 std::string ServerLogController::showLogs(const std::string &pathToLogFile) {
@@ -40,13 +35,13 @@ std::string ServerLogController::showLogs(const std::string &pathToLogFile) {
     int master = -1, slave = -1;
     char slaveName[128] = {0};
     if (openpty(&master, &slave, slaveName, NULL, NULL) < 0) {
-        if (manager_) manager_->pushLog("ServerLogController::showLogs: openpty failed");
+        pushLog("ServerLogController::showLogs: openpty failed");
         return std::string();
     }
 
     pid_t pid = fork();
     if (pid < 0) {
-        if (manager_) manager_->pushLog("ServerLogController::showLogs: fork failed");
+        pushLog("ServerLogController::showLogs: fork failed");
         close(master); 
         close(slave);
         return std::string();
@@ -76,7 +71,7 @@ std::string ServerLogController::showLogs(const std::string &pathToLogFile) {
     
     
     close(slave);
-    if (manager_) manager_->pushLog(std::string("ServerLogController::showLogs: spawned log_script pid=") + std::to_string(pid));
+    pushLog(std::string("ServerLogController::showLogs: spawned log_script pid=") + std::to_string(pid));
     return std::string(slaveName);
 }
 
@@ -106,10 +101,10 @@ bool ServerLogController::handleJson(const nlohmann::json &params) {
             if (action == "show") {
                 std::string path;
                 if (params.contains("path") && params["path"].is_string()) path = params["path"].get<std::string>();
-                if (path.empty() && manager_) path = manager_->logPath().empty() ? std::string("/tmp/rat_server.log") : manager_->logPath();
+                if (path.empty()) path = logPath_.empty() ? std::string("/tmp/rat_server.log") : logPath_;
                 std::string pty = showLogs(path);
                 if (!pty.empty()) {
-                    if (manager_) manager_->pushLog(std::string("LogScript spawned on ") + pty);
+                    pushLog(std::string("LogScript spawned on ") + pty);
                     return true;
                 }
                 return false;
@@ -117,6 +112,26 @@ bool ServerLogController::handleJson(const nlohmann::json &params) {
         }
     } catch (...) {}
     return false;
+}
+
+void ServerLogController::pushLog(const std::string &msg) {
+    std::lock_guard<std::mutex> lock(logMtx_);
+    logs_.push(msg);
+    
+    // Write to log file
+    if (logPath_.empty()) logPath_ = "/tmp/rat_server.log";
+    try {
+        std::ofstream ofs(logPath_, std::ios::app);
+        if (ofs) ofs << msg << std::endl;
+    } catch (...) {}
+}
+
+bool ServerLogController::popLog(std::string &out) {
+    std::lock_guard<std::mutex> lock(logMtx_);
+    if (logs_.empty()) return false;
+    out = std::move(logs_.front());
+    logs_.pop();
+    return true;
 }
 
 } 

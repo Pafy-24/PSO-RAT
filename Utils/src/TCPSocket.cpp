@@ -1,5 +1,6 @@
 #include "Utils/TCPSocket.hpp"
 #include <SFML/Network/Packet.hpp>
+#include <iostream>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -37,13 +38,17 @@ bool TCPSocket::listen(unsigned short port) {
 
 std::unique_ptr<TCPSocket> TCPSocket::accept() {
     std::unique_ptr<TCPSocket> client = std::make_unique<TCPSocket>();
-    if (listener_.accept(client->socket_) != sf::Socket::Status::Done) return nullptr;
-    return client;
+    sf::Socket::Status status = listener_.accept(client->socket_);
+    if (status == sf::Socket::Status::Done) {
+        return client;
+    }
+    return nullptr;
 }
 
 bool TCPSocket::bind(unsigned short port) {
-    
-    return listen(port);
+    if (!listen(port)) return false;
+    listener_.setBlocking(false);  // Non-blocking for accept()
+    return true;
 }
 
 void TCPSocket::close() {

