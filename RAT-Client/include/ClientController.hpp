@@ -1,5 +1,6 @@
 #pragma once
 
+#include "IClientController.hpp"
 #include "Utils/TCPSocket.hpp"
 #include <nlohmann/json.hpp>
 #include <memory>
@@ -8,7 +9,7 @@
 
 namespace Client {
 
-class ClientController {
+class ClientController : public IClientController {
 public:
     
     explicit ClientController(std::shared_ptr<Utils::TCPSocket> socket);
@@ -23,9 +24,11 @@ public:
     
     bool isValid() const;
 
-    
     bool sendJson(const nlohmann::json &obj);
     bool receiveJson(nlohmann::json &out);
+    
+    nlohmann::json handleCommand(const nlohmann::json &request) override;
+    std::string getHandle() const override { return "tcp"; }
 
 private:
     std::shared_ptr<Utils::TCPSocket> socket_;

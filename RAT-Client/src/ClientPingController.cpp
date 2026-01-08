@@ -1,44 +1,56 @@
 #include "ClientPingController.hpp"
-#include "ClientManager.hpp"
 #include <thread>
 #include <chrono>
-#include <iostream>
 
 namespace Client {
 
-ClientPingController::ClientPingController(std::shared_ptr<Utils::TCPSocket> tcpSocket)
-    : ClientController(std::move(tcpSocket)), udpSocket_(std::make_unique<Utils::UDPSocket>()) {}
+ClientPingController::ClientPingController() 
+    : udpSocket_(std::make_unique<Utils::UDPSocket>()) {
+    if (udpSocket_) {
+        udpSocket_->setBlocking(false);
+    }
+}
 
 ClientPingController::~ClientPingController() = default;
 
-bool ClientPingController::pingUntilResponse(const std::string &name,
-                                            const sf::IpAddress &serverIp,
-                                            unsigned short udpPort,
-                                            unsigned short tcpPort,
-                                            int maxAttempts,
-                                            int intervalMs) {
-    if (!udpSocket_) return false;
-    for (int i = 0; i < maxAttempts; ++i) {
-        std::string ping = "ping";
-        if (!udpSocket_->sendTo(ping, serverIp, udpPort)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
-            continue;
-        }
+nlohmann::json ClientPingController::handleCommand(const nlohmann::json &request) {
+    (void)request;
+    nlohmann::json reply;
+    reply["controller"] = "ping";
+    reply["out"] = "Ping controller is for internal discovery only";
+    reply["ret"] = -1;
+    return reply;
+}
 
-    std::string resp;
-    sf::IpAddress sender(0u);
-    unsigned short senderPort = 0;
-        if (udpSocket_->receive(resp, sender, senderPort)) {
-            if (resp == "pong") {
-                
-                if (ClientManager::getInstance()->connectTo(name, serverIp, tcpPort)) {
-                    return true;
+bool ClientPingController::discoverServer(const sf::IpAddress &serverIp,
+                                         unsigned short udpPort,
+                                         int maxAttempts,
+                                         int intervalMs) {
+    if (!udpSocket_) return false;
+    
+    for (int i = 0; i < maxAttempts; ++i) {
+        // Trimite ping UDP
+        std::string ping = "ping";
+        udpSocket_->sendTo(ping, serverIp, udpPort);
+        
+        // Așteaptă răspuns
+        std::string resp;
+        sf::IpAddress sender(0u);
+        unsigned short senderPort = 0;
+        
+        // Încearcă să primească răspuns timp de intervalMs
+        auto startTime = std::chrono::steady_clock::now();
+        while (std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - startTime).count() < intervalMs) {
+            if (udpSocket_->receive(resp, sender, senderPort)) {
+                if (resp == "pong") {
+                    return true; // Server găsit!
                 }
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
     }
+    
     return false;
 }
 

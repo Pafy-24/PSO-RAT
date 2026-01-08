@@ -31,6 +31,8 @@ public:
     
     void start() override;
     void stop() override;
+    
+    std::string getHandle() const override { return "bash"; }
 
 private:
     Utils::TCPSocket *socket_;

@@ -1,4 +1,5 @@
 #include "ServerManager.hpp"
+#include "ServerPingController.hpp"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -22,34 +23,50 @@ std::shared_ptr<ServerManager> ServerManager::getInstance() {
 
 ServerManager::ServerManager() = default;
 ServerManager::~ServerManager() {
-    std::lock_guard<std::mutex> lock(mtx_);
     stop();
     
-        // stop controllers first to ensure their threads won't use sockets
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
         for (auto &p : controllers_) if (p.second) p.second->stop();
         controllers_.clear();
 
-        // now close sockets (controllers no longer access them)
         for (auto &p : clients_) if (p.second) p.second->close();
         clients_.clear();
+    }
 }
 
 bool ServerManager::start(unsigned short port) {
     
     std::lock_guard<std::mutex> lock(mtx_);
-    if (running_) return false;
+    if (running_) {
+        std::cerr << "Error: Server is already running" << std::endl;
+        return false;
+    }
     listener_ = std::make_unique<Utils::TCPSocket>();
     if (!listener_->bind(port)) {
+        std::cerr << "Failed to bind listener socket to port " << port << std::endl;
+        std::cerr << "Possible causes:" << std::endl;
+        std::cerr << "  - Port already in use (check with: lsof -i :" << port << ")" << std::endl;
+        std::cerr << "  - Insufficient permissions (ports < 1024 need root)" << std::endl;
+        std::cerr << "  - Firewall blocking the port" << std::endl;
         listener_.reset();
         return false;
     }
     port_ = port;
     running_ = true;
     
-        controllers_.emplace("log", std::make_unique<ServerLogController>(this));
-        controllers_.emplace("command", std::make_unique<ServerCommandController>(this));
-        if (auto it = controllers_.find("log"); it != controllers_.end()) it->second->start();
-        if (auto it = controllers_.find("command"); it != controllers_.end()) it->second->start();
+    std::cout << "Server started successfully on port " << port << std::endl;
+    
+    controllers_.emplace("log", std::make_unique<ServerLogController>(this));
+    controllers_.emplace("command", std::make_unique<ServerCommandController>(this));
+    
+    auto pingController = std::make_unique<ServerPingController>(this);
+    if (pingController->startUdpResponder(port)) {
+        controllers_.emplace("ping", std::move(pingController));
+    }
+    
+    if (auto it = controllers_.find("log"); it != controllers_.end()) it->second->start();
+    if (auto it = controllers_.find("command"); it != controllers_.end()) it->second->start();
     return true;
 }
 
@@ -74,10 +91,16 @@ int ServerManager::run(unsigned short port) {
     if (!start(port)) return 1;
     
     int clientCount = 0;
+    Utils::TCPSocket* listenerPtr = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        listenerPtr = listener_.get();
+    }
+    
     while (isRunning()) {
-        auto client = listener_->accept();
+        if (!listenerPtr) break;
+        auto client = listenerPtr->accept();
         if (!client) {
-            
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
@@ -87,7 +110,6 @@ int ServerManager::run(unsigned short port) {
         {
             std::lock_guard<std::mutex> lock(mtx_);
             clients_[device] = std::move(client);
-            
             controllers_[device] = std::make_unique<ServerController>(this, device, clientPtr);
             if (auto it = controllers_.find(device); it != controllers_.end()) it->second->start();
         }
@@ -99,13 +121,21 @@ int ServerManager::run(unsigned short port) {
 bool ServerManager::addClient(const std::string &deviceName, std::unique_ptr<Utils::TCPSocket> socket) {
     
     std::lock_guard<std::mutex> lock(mtx_);
-    if (!socket) return false;
-    if (clients_.find(deviceName) != clients_.end()) return false; 
+    if (!socket) {
+        pushLog("addClient: null socket for " + deviceName);
+        return false;
+    }
+    if (clients_.find(deviceName) != clients_.end()) {
+        pushLog("addClient: client already exists: " + deviceName);
+        return false;
+    }
     Utils::TCPSocket *sockPtr = socket.get();
     clients_[deviceName] = std::move(socket);
-    
     controllers_[deviceName] = std::make_unique<ServerController>(this, deviceName, sockPtr);
-    if (auto it = controllers_.find(deviceName); it != controllers_.end()) it->second->start();
+    if (auto it = controllers_.find(deviceName); it != controllers_.end()) {
+        it->second->start();
+        pushLog("Client connected: " + deviceName);
+    }
     return true;
 }
 
@@ -113,17 +143,21 @@ bool ServerManager::removeClient(const std::string &deviceName) {
     
     std::lock_guard<std::mutex> lock(mtx_);
     auto it = clients_.find(deviceName);
-    if (it == clients_.end()) return false;
+    if (it == clients_.end()) {
+        pushLog("removeClient: client not found: " + deviceName);
+        return false;
+    }
     
-        // stop controller first to ensure background threads are joined
-        if (auto cit = controllers_.find(deviceName); cit != controllers_.end()) {
-            if (cit->second) cit->second->stop();
-            controllers_.erase(cit);
-        }
+    // stop controller first to ensure background threads are joined
+    if (auto cit = controllers_.find(deviceName); cit != controllers_.end()) {
+        if (cit->second) cit->second->stop();
+        controllers_.erase(cit);
+    }
 
-        if (it->second) it->second->close();
-        clients_.erase(it);
-        return true;
+    if (it->second) it->second->close();
+    clients_.erase(it);
+    pushLog("Client removed: " + deviceName);
+    return true;
 }
 
 Utils::TCPSocket *ServerManager::getClient(const std::string &deviceName) {

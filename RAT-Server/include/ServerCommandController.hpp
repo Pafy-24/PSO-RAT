@@ -18,19 +18,20 @@ public:
     
     void start() override;
     void stop() override;
+    
+    std::string getHandle() const override { return "command"; }
 
 private:
     ServerManager *manager_;
     bool running_ = false;
     std::unique_ptr<std::thread> stdinThread_;
+    std::string selectedClient_;
 
-    // helper methods
     pid_t spawnTerminal(const std::string &innerCmd);
     std::string processLine(const std::string &line);
-    // optional stdin thread when running interactively
     void stdinLoop();
 
-    // per-command handlers
+    std::string handleHelp();
     std::string handleList();
     std::string handleChoose(const std::string &name);
     std::string handleKill(const std::string &name);

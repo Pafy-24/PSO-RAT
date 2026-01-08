@@ -19,12 +19,7 @@ void ServerLogController::start() {
     running_ = true;
     thread_ = std::make_unique<std::thread>([this]() {
         while (running_) {
-            
-            std::string log;
-            while (manager_->popLog(log)) {
-                std::cout << "[LOG] " << log << std::endl;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
     });
 }
@@ -40,14 +35,15 @@ std::string ServerLogController::showLogs(const std::string &pathToLogFile) {
     int master = -1, slave = -1;
     char slaveName[128] = {0};
     if (openpty(&master, &slave, slaveName, NULL, NULL) < 0) {
-        manager_->pushLog("ServerLogController::showLogs: openpty failed");
+        if (manager_) manager_->pushLog("ServerLogController::showLogs: openpty failed");
         return std::string();
     }
 
     pid_t pid = fork();
     if (pid < 0) {
-        manager_->pushLog("ServerLogController::showLogs: fork failed");
-        close(master); close(slave);
+        if (manager_) manager_->pushLog("ServerLogController::showLogs: fork failed");
+        close(master); 
+        close(slave);
         return std::string();
     }
     if (pid == 0) {
@@ -75,7 +71,7 @@ std::string ServerLogController::showLogs(const std::string &pathToLogFile) {
     
     
     close(slave);
-    manager_->pushLog(std::string("ServerLogController::showLogs: spawned log_script pid=") + std::to_string(pid));
+    if (manager_) manager_->pushLog(std::string("ServerLogController::showLogs: spawned log_script pid=") + std::to_string(pid));
     return std::string(slaveName);
 }
 

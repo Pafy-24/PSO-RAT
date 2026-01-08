@@ -9,7 +9,5 @@ int main() {
     in_addr_t a = inet_addr(server_ip);
     uint32_t hostOrder = ntohl(a);
     sf::IpAddress ip(hostOrder);
-    int rc = Client::ClientManager::getInstance()->run(ip, port);
-    if (rc != 0) std::cerr << "Client run failed: " << rc << std::endl;
-    return rc;
+    return Client::ClientManager::getInstance()->run(ip, port);
 }

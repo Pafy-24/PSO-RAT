@@ -20,8 +20,9 @@ public:
     virtual bool sendJson(const nlohmann::json &) { return false; }
     virtual bool receiveJson(nlohmann::json &) { return false; }
     
-    
     virtual bool handleJson(const nlohmann::json & ) { return false; }
+    
+    virtual std::string getHandle() const { return "unknown"; }
 };
 
 } 

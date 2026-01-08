@@ -1,23 +1,32 @@
 #pragma once
 
-#include "ServerController.hpp"
+#include "IController.hpp"
 #include "Utils/UDPSocket.hpp"
 #include <memory>
+#include <thread>
+#include <atomic>
 
 namespace Server {
 
-class ServerPingController : public ServerController {
-public:
-    explicit ServerPingController(Utils::TCPSocket *sock);
-    ~ServerPingController();
+class ServerManager;
 
-    
-    
+class ServerPingController : public IController {
+public:
+    explicit ServerPingController(ServerManager *manager);
+    ~ServerPingController() override;
+
     bool startUdpResponder(unsigned short udpPort);
+    
+    void start() override;
+    void stop() override;
+    
+    std::string getHandle() const override { return "ping"; }
 
 private:
+    ServerManager *manager_;
     std::unique_ptr<Utils::UDPSocket> udpSocket_;
-    bool running_ = false;
+    std::atomic<bool> running_{false};
+    std::unique_ptr<std::thread> udpThread_;
 };
 
 } 

@@ -33,4 +33,8 @@ void UDPSocket::close() {
     socket_.unbind();
 }
 
+void UDPSocket::setBlocking(bool blocking) {
+    socket_.setBlocking(blocking);
+}
+
 } 

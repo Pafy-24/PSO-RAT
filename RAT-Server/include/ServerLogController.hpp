@@ -30,6 +30,8 @@ public:
     
     
     bool handleJson(const nlohmann::json &params) override;
+    
+    std::string getHandle() const override { return "log"; }
 
 private:
     ServerManager *manager_;
