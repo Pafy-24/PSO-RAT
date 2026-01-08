@@ -12,9 +12,9 @@
 
 namespace Server {
 
-// ============================================================================
-// Singleton
-// ============================================================================
+
+
+
 
 std::shared_ptr<ServerManager> ServerManager::getInstance() {
     if (!ServerManager::instance) {
@@ -25,7 +25,7 @@ std::shared_ptr<ServerManager> ServerManager::getInstance() {
 }
 
 ServerManager::ServerManager() {
-    // Initialize client management
+    
     clientManagement_ = std::make_unique<ClientManagement>(this);
 }
 
@@ -36,30 +36,21 @@ ServerManager::~ServerManager() {
     cleanupResources();
 }
 
-// ============================================================================
-// Lifecycle
-// ============================================================================
+
+
+
 
 bool ServerManager::start(unsigned short port) {
     unsigned short localPort = 0;
     
     {
         std::lock_guard<std::mutex> lock(mtx_);
+        if (running_) return false;
         
-        if (running_) {
-            std::cerr << "Error: Server is already running" << std::endl;
-            return false;
-        }
         
-        // Initialize listener socket
         listener_ = std::make_unique<Utils::TCPSocket>();
         if (!listener_->bind(port)) {
-            std::cerr << "Failed to bind listener socket to port " << port << std::endl;
-            std::cerr << "Possible causes:" << std::endl;
-            std::cerr << "  - Port already in use (check with: lsof -i :" << port << ")" << std::endl;
-            std::cerr << "  - Socket in TIME_WAIT state (wait ~60s or run: sudo fuser -k " << port << "/tcp)" << std::endl;
-            std::cerr << "  - Insufficient permissions (ports < 1024 need root)" << std::endl;
-            std::cerr << "  - Firewall blocking the port" << std::endl;
+            std::cerr << "Failed to bind port " << port << std::endl;
             listener_.reset();
             return false;
         }
@@ -70,7 +61,7 @@ bool ServerManager::start(unsigned short port) {
         std::cout << "Server started successfully on port " << port << std::endl;
     }
     
-    // Initialize system controllers AFTER releasing mutex to avoid deadlock
+    
     initializeControllers(localPort);
     
     return true;
@@ -84,7 +75,7 @@ void ServerManager::stop() {
     
     running_ = false;
     
-    // Close listener socket
+    
     if (listener_) {
         listener_->close();
         listener_.reset();
@@ -112,7 +103,7 @@ int ServerManager::run(unsigned short port) {
         listenerPtr = listener_.get();
     }
     
-    // Main server loop: accept and handle client connections
+    
     while (isRunning()) {
         if (!listenerPtr) break;
         
@@ -128,9 +119,9 @@ int ServerManager::run(unsigned short port) {
     return 0;
 }
 
-// ============================================================================
-// Client Management
-// ============================================================================
+
+
+
 
 bool ServerManager::addClient(const std::string &deviceName, std::unique_ptr<Utils::TCPSocket> socket) {
     return clientManagement_ ? clientManagement_->addClient(deviceName, std::move(socket)) : false;
@@ -144,9 +135,9 @@ Utils::TCPSocket *ServerManager::getClient(const std::string &deviceName) {
     return clientManagement_ ? clientManagement_->getClient(deviceName) : nullptr;
 }
 
-// ============================================================================
-// Controller Access
-// ============================================================================
+
+
+
 
 IController *ServerManager::getSystemController(const std::string &handle) {
     std::lock_guard<std::mutex> lock(mtx_);
@@ -154,9 +145,9 @@ IController *ServerManager::getSystemController(const std::string &handle) {
     return (it != controllers_.end()) ? it->second.get() : nullptr;
 }
 
-// ============================================================================
-// Communication
-// ============================================================================
+
+
+
 
 bool ServerManager::sendRequest(const std::string& clientName, const nlohmann::json& request) {
     if (!clientManagement_) return false;
@@ -166,14 +157,14 @@ bool ServerManager::sendRequest(const std::string& clientName, const nlohmann::j
     
     std::string jsonStr = request.dump();
     
-    // Log outgoing request
+    
     pushLog("→ " + clientName + ": " + jsonStr);
     
     return client->send(jsonStr);
 }
 
 bool ServerManager::receiveResponse(const std::string& clientName, nlohmann::json& response, int timeoutMs) {
-    (void)timeoutMs; // Unused for now
+    (void)timeoutMs; 
     
     if (!clientManagement_) return false;
     
@@ -185,7 +176,7 @@ bool ServerManager::receiveResponse(const std::string& clientName, nlohmann::jso
         try {
             response = nlohmann::json::parse(jsonStr);
             
-            // Log incoming response
+            
             pushLog("← " + clientName + ": " + jsonStr);
             
             return true;
@@ -196,9 +187,9 @@ bool ServerManager::receiveResponse(const std::string& clientName, nlohmann::jso
     return false;
 }
 
-// ============================================================================
-// Logging
-// ============================================================================
+
+
+
 
 void ServerManager::pushLog(const std::string &msg) {
     std::lock_guard<std::mutex> lock(logMtx_);
@@ -219,9 +210,9 @@ bool ServerManager::popLog(std::string &out) {
     return true;
 }
 
-// ============================================================================
-// Client Info
-// ============================================================================
+
+
+
 
 std::vector<std::string> ServerManager::listClients() {
     return clientManagement_ ? clientManagement_->listClients() : std::vector<std::string>();
@@ -235,32 +226,32 @@ bool ServerManager::hasClient(const std::string &name) {
     return clientManagement_ ? clientManagement_->hasClient(name) : false;
 }
 
-// ============================================================================
-// Helper Functions (Private)
-// ============================================================================
+
+
+
 
 void ServerManager::initializeControllers(unsigned short port) {
-    // Note: This function must be called WITHOUT holding mtx_ to avoid deadlock
     
-    // Create and start log controller
+    
+    
     controllers_.emplace("log", std::make_unique<ServerLogController>(this));
     if (auto it = controllers_.find("log"); it != controllers_.end()) {
         it->second->start();
     }
     
-    // Create and start bash/command controller
+    
     controllers_.emplace("bash", std::make_unique<ServerCommandController>(this));
     if (auto it = controllers_.find("bash"); it != controllers_.end()) {
         it->second->start();
     }
     
-    // Create and start file controller
+    
     controllers_.emplace("file", std::make_unique<ServerFileController>(this));
     if (auto it = controllers_.find("file"); it != controllers_.end()) {
         it->second->start();
     }
     
-    // Create and start ping controller (UDP discovery)
+    
     auto pingController = std::make_unique<ServerPingController>(this);
     if (pingController->startUdpResponder(port)) {
         controllers_.emplace("ping", std::move(pingController));
@@ -270,7 +261,7 @@ void ServerManager::initializeControllers(unsigned short port) {
 }
 
 void ServerManager::cleanupResources() {
-    // Stop all controllers
+    
     for (auto &[name, controller] : controllers_) {
         if (controller) {
             controller->stop();
@@ -278,7 +269,7 @@ void ServerManager::cleanupResources() {
     }
     controllers_.clear();
     
-    // Cleanup all client connections
+    
     if (clientManagement_) {
         clientManagement_->cleanup();
     }
@@ -287,10 +278,10 @@ void ServerManager::cleanupResources() {
 void ServerManager::handleNewClientConnection(std::unique_ptr<Utils::TCPSocket> client, int& unknownCount) {
     if (!client) return;
     
-    // Set blocking mode for handshake
+    
     client->setBlocking(true);
     
-    // Receive and parse handshake message
+    
     std::string deviceName;
     std::string jsonStr;
     
@@ -309,23 +300,21 @@ void ServerManager::handleNewClientConnection(std::unique_ptr<Utils::TCPSocket> 
         return;
     }
     
-    // Generate device name if not provided
+    
     if (deviceName.empty()) {
         deviceName = "unknown" + std::to_string(++unknownCount);
     }
     
-    // Ensure device name is unique
+    
     int counter = unknownCount;
     if (clientManagement_) {
         deviceName = clientManagement_->generateUniqueDeviceName(deviceName, counter);
         unknownCount = counter;
     }
     
-    // Register client
+    
     if (clientManagement_) {
-        if (clientManagement_->addClient(deviceName, std::move(client))) {
-            std::cout << "Client registered: " << deviceName << std::endl;
-        } else {
+        if (!clientManagement_->addClient(deviceName, std::move(client))) {
             std::cerr << "Failed to register client: " << deviceName << std::endl;
         }
     }

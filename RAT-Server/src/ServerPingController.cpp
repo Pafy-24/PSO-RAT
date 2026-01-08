@@ -14,14 +14,14 @@ ServerPingController::~ServerPingController() {
 }
 
 void ServerPingController::handle(const nlohmann::json &packet) {
-    // PingController handles UDP discovery, not TCP packets
+    
     (void)packet;
 }
 
 void ServerPingController::start() {
     if (running_) return;
     running_ = true;
-    // UDP responder thread is started by startUdpResponder()
+    
 }
 
 void ServerPingController::stop() {

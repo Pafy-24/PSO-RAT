@@ -47,7 +47,7 @@ std::unique_ptr<TCPSocket> TCPSocket::accept() {
 
 bool TCPSocket::bind(unsigned short port) {
     if (!listen(port)) return false;
-    listener_.setBlocking(false);  // Non-blocking for accept()
+    listener_.setBlocking(false);  
     return true;
 }
 

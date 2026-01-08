@@ -11,53 +11,29 @@ ClientManagement::~ClientManagement() {
     cleanup();
 }
 
-// ============================================================================
-// Client Operations
-// ============================================================================
+
+
+
 
 bool ClientManagement::addClient(const std::string &deviceName, std::unique_ptr<Utils::TCPSocket> socket) {
     std::lock_guard<std::mutex> lock(mtx_);
+    if (!socket) return false;
     
-    // Validate input
-    if (!socket) {
-        std::cerr << "Error: Cannot add client with null socket" << std::endl;
-        logMessage("Failed to add client " + deviceName + ": null socket");
-        return false;
-    }
-    
-    if (clients_.find(deviceName) != clients_.end()) {
-        std::cerr << "Warning: Client " << deviceName << " already exists, replacing..." << std::endl;
-        logMessage("Replacing existing client " + deviceName);
-    }
-    
-    // Register client
     std::string clientIP = socket->getRemoteAddress();
-    
     clients_[deviceName] = std::move(socket);
     clientIPs_[deviceName] = clientIP;
-    
     logMessage("Client connected: " + deviceName + " (" + clientIP + ")");
     return true;
 }
 
 bool ClientManagement::removeClient(const std::string &deviceName) {
     std::lock_guard<std::mutex> lock(mtx_);
-    
     auto it = clients_.find(deviceName);
-    if (it == clients_.end()) {
-        return false;
-    }
+    if (it == clients_.end()) return false;
     
-    // Close and remove socket
-    if (it->second) {
-        it->second->close();
-    }
+    if (it->second) it->second->close();
     clients_.erase(it);
-    
-    // Remove IP mapping
     clientIPs_.erase(deviceName);
-    
-    logMessage("Client removed: " + deviceName);
     return true;
 }
 
@@ -66,9 +42,9 @@ bool ClientManagement::hasClient(const std::string &name) const {
     return clients_.find(name) != clients_.end();
 }
 
-// ============================================================================
-// Client Queries
-// ============================================================================
+
+
+
 
 Utils::TCPSocket* ClientManagement::getClient(const std::string &deviceName) const {
     std::lock_guard<std::mutex> lock(mtx_);
@@ -96,14 +72,14 @@ std::string ClientManagement::getClientIP(const std::string &name) const {
     return (it != clientIPs_.end()) ? it->second : "unknown";
 }
 
-// ============================================================================
-// Lifecycle
-// ============================================================================
+
+
+
 
 void ClientManagement::cleanup() {
     std::lock_guard<std::mutex> lock(mtx_);
     
-    // Close all client connections
+    
     for (auto &p : clients_) {
         if (p.second) {
             p.second->close();
@@ -113,12 +89,12 @@ void ClientManagement::cleanup() {
     clientIPs_.clear();
 }
 
-// ============================================================================
-// Utilities
-// ============================================================================
+
+
+
 
 std::string ClientManagement::generateUniqueDeviceName(const std::string& base, int& counter) const {
-    // Note: mtx_ must be locked before calling this function
+    
     
     std::string name = base;
     while (clients_.find(name) != clients_.end()) {
@@ -134,4 +110,4 @@ void ClientManagement::logMessage(const std::string &msg) {
     }
 }
 
-} // namespace Server
+} 

@@ -31,7 +31,7 @@ private:
     std::unique_ptr<std::thread> stdinThread_;
     std::string selectedClient_;
     
-    // Bash response queue
+    
     std::queue<nlohmann::json> bashResponses_;
     mutable std::mutex bashMtx_;
 

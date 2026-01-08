@@ -5,7 +5,7 @@
 int main(int argc, char** argv) {
     unsigned short port = 5555;
     
-    // Allow port override from command line
+    
     if (argc > 1) {
         int p = std::atoi(argv[1]);
         if (p > 0 && p <= 65535) {

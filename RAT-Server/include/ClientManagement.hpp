@@ -26,39 +26,39 @@ public:
     explicit ClientManagement(ServerManager* manager);
     ~ClientManagement();
 
-    // ========================================================================
-    // Client Operations
-    // ========================================================================
+    
+    
+    
     bool addClient(const std::string &deviceName, std::unique_ptr<Utils::TCPSocket> socket);
     bool removeClient(const std::string &deviceName);
     bool hasClient(const std::string &name) const;
     
-    // ========================================================================
-    // Client Queries
-    // ========================================================================
+    
+    
+    
     Utils::TCPSocket* getClient(const std::string &deviceName) const;
     std::vector<std::string> listClients() const;
     std::string getClientIP(const std::string &name) const;
     
-    // ========================================================================
-    // Lifecycle
-    // ========================================================================
+    
+    
+    
     void cleanup();
     
-    // ========================================================================
-    // Utilities
-    // ========================================================================
+    
+    
+    
     std::string generateUniqueDeviceName(const std::string& base, int& counter) const;
 
 private:
     ServerManager* manager_;
     mutable std::mutex mtx_;
     
-    // Client registry
+    
     std::map<std::string, std::unique_ptr<Utils::TCPSocket>> clients_;
     std::map<std::string, std::string> clientIPs_;
     
     void logMessage(const std::string &msg);
 };
 
-} // namespace Server
+} 

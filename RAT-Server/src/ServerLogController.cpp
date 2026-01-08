@@ -16,14 +16,14 @@ ServerLogController::ServerLogController(ServerManager *manager) : IController(m
 ServerLogController::~ServerLogController() { stop(); }
 
 void ServerLogController::handle(const nlohmann::json &packet) {
-    // LogController doesn't process incoming packets
+    
     (void)packet;
 }
 
 void ServerLogController::start() {
     if (running_) return;
     running_ = true;
-    // No thread needed - logs are pushed/popped directly
+    
 }
 
 void ServerLogController::stop() {
@@ -118,7 +118,7 @@ void ServerLogController::pushLog(const std::string &msg) {
     std::lock_guard<std::mutex> lock(logMtx_);
     logs_.push(msg);
     
-    // Write to log file
+    
     if (logPath_.empty()) logPath_ = "/tmp/rat_server.log";
     try {
         std::ofstream ofs(logPath_, std::ios::app);

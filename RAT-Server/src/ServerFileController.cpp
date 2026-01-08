@@ -39,7 +39,7 @@ void ServerFileController::start() {}
 void ServerFileController::stop() {}
 
 void ServerFileController::handle(const nlohmann::json &packet) {
-    // File controller handles responses via handleJson for async operations
+    
     handleJson(packet);
 }
 
@@ -52,34 +52,21 @@ bool ServerFileController::handleJson(const nlohmann::json &response) {
 }
 
 std::string ServerFileController::handleDownload(const std::string &clientName, const std::string &remotePath, const std::string &localPath) {
-    if (!manager_) return "Manager not available\n";
-    
-    if (clientName.empty()) return "No client specified\n";
-    if (!manager_->hasClient(clientName)) return "Client not found\n";
-    
-    if (remotePath.empty()) return "Usage: download [client] <remote_path> <local_path>\n";
-    if (localPath.empty()) return "Usage: download [client] <remote_path> <local_path>\n";
-    
-    if (!manager_->hasClient(clientName)) return "Client not found\n";
+    if (!manager_ || clientName.empty() || !manager_->hasClient(clientName)) return "Error\n";
+    if (remotePath.empty() || localPath.empty()) return "Usage: download [client] <remote_path> <local_path>\n";
     
     nlohmann::json cmd;
     cmd["controller"] = "file";
     cmd["action"] = "download";
     cmd["path"] = remotePath;
     
-    if (!manager_->sendRequest(clientName, cmd)) {
-        return "Failed to send download command\n";
-    }
-    
-    std::cout << "Downloading file... (press 'q' to cancel)" << std::flush;
+    if (!manager_->sendRequest(clientName, cmd)) return "Failed\n";
     
     struct termios oldSettings, newSettings;
     tcgetattr(STDIN_FILENO, &oldSettings);
     newSettings = oldSettings;
     newSettings.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newSettings);
-    
-    // Set stdin to non-blocking
     int oldFlags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, oldFlags | O_NONBLOCK);
     
@@ -91,7 +78,7 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
     auto endTime = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     
     while (!received && !cancelled) {
-        // Try to receive response with short timeout
+        
         if (manager_->receiveResponse(clientName, response, 100)) {
             received = true;
             break;
@@ -106,7 +93,6 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
         if (std::chrono::steady_clock::now() >= endTime) {
             fcntl(STDIN_FILENO, F_SETFL, oldFlags);
             tcsetattr(STDIN_FILENO, TCSANOW, &oldSettings);
-            std::cout << "\nDownload timeout (30s)\n" << std::flush;
             return "";
         }
         
@@ -118,19 +104,9 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
     fcntl(STDIN_FILENO, F_SETFL, oldFlags);
     tcsetattr(STDIN_FILENO, TCSANOW, &oldSettings);
     
-    if (cancelled) {
-        std::cout << "\n\nDownload cancelled\n" << std::flush;
-        return "";
-    }
-    
-    std::cout << " done!\n" << std::flush;
-    
-    if (!response.contains("success") || !response["success"].get<bool>()) {
-        std::string error = response.contains("error") ? response["error"].get<std::string>() : "Unknown error";
-        return "Download failed: " + error + "\n";
-    }
-    
-    if (!response.contains("data")) return "Response missing data field\n";
+    if (cancelled) return "";
+    if (!response.contains("success") || !response["success"].get<bool>()) return "Failed\n";
+    if (!response.contains("data")) return "Error\n";
     
     std::string data = response["data"].get<std::string>();
     std::string decoded;
@@ -167,7 +143,7 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
     
     std::string actualPath = expandPath(localPath);
     
-    // Check if path is a directory
+    
     struct stat st;
     if (stat(actualPath.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
         std::string filename = response.contains("filename") ? response["filename"].get<std::string>() : "downloaded_file";
@@ -226,8 +202,6 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     if (valb > -6) encoded.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
     while (encoded.size() % 4) encoded.push_back('=');
     
-    if (!manager_->hasClient(clientName)) return "Client not found\n";
-    
     std::string actualRemotePath = remotePath;
     if (remotePath == "." || remotePath.back() == '/' || remotePath.find('.') == std::string::npos) {
         size_t lastSlash = localPath.find_last_of("/\\");
@@ -247,19 +221,13 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     cmd["path"] = actualRemotePath;
     cmd["data"] = encoded;
     
-    if (!manager_->sendRequest(clientName, cmd)) {
-        return "Failed to send upload command\n";
-    }
-    
-    std::cout << "Uploading file... (press 'q' to cancel)" << std::flush;
+    if (!manager_->sendRequest(clientName, cmd)) return "Failed\n";
     
     struct termios oldSettings, newSettings;
     tcgetattr(STDIN_FILENO, &oldSettings);
     newSettings = oldSettings;
     newSettings.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newSettings);
-    
-    // Set stdin to non-blocking
     int oldFlags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, oldFlags | O_NONBLOCK);
     
@@ -271,7 +239,7 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     auto endTime = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     
     while (!received && !cancelled) {
-        // Try to receive response with short timeout
+        
         if (manager_->receiveResponse(clientName, response, 100)) {
             received = true;
             break;
@@ -286,7 +254,6 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
         if (std::chrono::steady_clock::now() >= endTime) {
             fcntl(STDIN_FILENO, F_SETFL, oldFlags);
             tcsetattr(STDIN_FILENO, TCSANOW, &oldSettings);
-            std::cout << "\nUpload timeout (30s)\n" << std::flush;
             return "";
         }
         
@@ -298,19 +265,10 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     fcntl(STDIN_FILENO, F_SETFL, oldFlags);
     tcsetattr(STDIN_FILENO, TCSANOW, &oldSettings);
     
-    if (cancelled) {
-        std::cout << "\n\nUpload cancelled\n" << std::flush;
-        return "";
-    }
+    if (cancelled) return "";
+    if (!response.contains("success") || !response["success"].get<bool>()) return "Failed\n";
     
-    std::cout << " done!\n" << std::flush;
-    
-    if (!response.contains("success") || !response["success"].get<bool>()) {
-        std::string error = response.contains("error") ? response["error"].get<std::string>() : "Unknown error";
-        return "Upload failed: " + error + "\n";
-    }
-    
-    return "Uploaded " + std::to_string(content.size()) + " bytes to " + actualRemotePath + "\n";
+    return "OK\n";
 }
 
 }

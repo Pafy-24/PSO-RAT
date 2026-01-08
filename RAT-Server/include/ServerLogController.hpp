@@ -31,7 +31,7 @@ public:
     
     std::string getHandle() const override { return "log"; }
     
-    // Logging functionality
+    
     void pushLog(const std::string &msg);
     bool popLog(std::string &out);
     const std::string &logPath() const { return logPath_; }
@@ -40,7 +40,7 @@ private:
     ServerManager *manager_;
     bool running_ = false;
     
-    // Log queue and file path
+    
     std::queue<std::string> logs_;
     mutable std::mutex logMtx_;
     std::string logPath_;

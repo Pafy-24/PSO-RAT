@@ -23,14 +23,14 @@ public:
     std::string handleDownload(const std::string &clientName, const std::string &remotePath, const std::string &localPath);
     std::string handleUpload(const std::string &clientName, const std::string &localPath, const std::string &remotePath);
     
-    // IController interface
+    
     void handle(const nlohmann::json &packet) override;
     bool handleJson(const nlohmann::json &response) override;
 
 private:
     ServerManager *manager_;
     
-    // Pending response storage
+    
     nlohmann::json pendingResponse_;
     bool hasResponse_ = false;
     std::mutex responseMtx_;

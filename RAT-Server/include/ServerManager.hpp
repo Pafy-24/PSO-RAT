@@ -28,25 +28,25 @@ class ServerFileController;
  */
 class ServerManager {
 public:
-    // ========================================================================
-    // Singleton Pattern
-    // ========================================================================
+    
+    
+    
     static std::shared_ptr<ServerManager> getInstance();
     ServerManager(const ServerManager &) = delete;
     ServerManager &operator=(const ServerManager &) = delete;
     ~ServerManager();
 
-    // ========================================================================
-    // Server Lifecycle
-    // ========================================================================
-    bool start(unsigned short port);        // Initialize server and bind to port
-    void stop();                            // Stop server and cleanup resources
-    bool isRunning() const;                 // Check if server is currently running
-    int run(unsigned short port);           // Main server loop (blocking)
+    
+    
+    
+    bool start(unsigned short port);        
+    void stop();                            
+    bool isRunning() const;                 
+    int run(unsigned short port);           
 
-    // ========================================================================
-    // Client Management
-    // ========================================================================
+    
+    
+    
     bool addClient(const std::string &deviceName, std::unique_ptr<Utils::TCPSocket> socket);
     bool removeClient(const std::string &deviceName);
     Utils::TCPSocket *getClient(const std::string &deviceName);
@@ -54,71 +54,71 @@ public:
     std::string getClientIP(const std::string &name);
     bool hasClient(const std::string &name);
 
-    // ========================================================================
-    // Controller Access & Routing
-    // ========================================================================
+    
+    
+    
     IController *getSystemController(const std::string &handle);
     
-    // ========================================================================
-    // Centralized Client Communication
-    // ========================================================================
+    
+    
+    
     bool sendRequest(const std::string &clientName, const nlohmann::json &request);
     bool receiveResponse(const std::string &clientName, nlohmann::json &response, int timeoutMs = 5000);
 
 
-    // ========================================================================
-    // Logging Subsystem
-    // ========================================================================
+    
+    
+    
     void pushLog(const std::string &msg);
     bool popLog(std::string &out);
     const std::string &logPath() const { return logPath_; }
 
-    // ========================================================================
-    // Accessors
-    // ========================================================================
+    
+    
+    
     unsigned short port() const { return port_; }
 
 private:
     ServerManager();
 
-    // ========================================================================
-    // Singleton Implementation
-    // ========================================================================
+    
+    
+    
     inline static std::shared_ptr<ServerManager> instance;
     inline static std::mutex initMutex;
 
-    // ========================================================================
-    // Server State
-    // ========================================================================
-    std::unique_ptr<Utils::TCPSocket> listener_;    // TCP listener socket
-    unsigned short port_ = 0;                       // Bound port number
-    bool running_ = false;                          // Server running flag
-    mutable std::mutex mtx_;                        // Main state mutex
+    
+    
+    
+    std::unique_ptr<Utils::TCPSocket> listener_;    
+    unsigned short port_ = 0;                       
+    bool running_ = false;                          
+    mutable std::mutex mtx_;                        
 
-    // ========================================================================
-    // Client Management
-    // ========================================================================
+    
+    
+    
     std::unique_ptr<ClientManagement> clientManagement_;
     
-    // ========================================================================
-    // System Controllers
-    // ========================================================================
-    std::map<std::string, std::unique_ptr<IController>> controllers_;   // handle -> controller
+    
+    
+    
+    std::map<std::string, std::unique_ptr<IController>> controllers_;   
 
 
 
-    // ========================================================================
-    // Logging System
-    // ========================================================================
-    std::queue<std::string> logs_;                  // Log message queue
-    mutable std::mutex logMtx_;                     // Log queue mutex
-    std::string logPath_;                           // Path to log file
+    
+    
+    
+    std::queue<std::string> logs_;                  
+    mutable std::mutex logMtx_;                     
+    std::string logPath_;                           
 
-    // ========================================================================
-    // Helper Functions
-    // ========================================================================
-    void initializeControllers(unsigned short port); // Initialize system controllers
-    void cleanupResources();                        // Cleanup on shutdown
+    
+    
+    
+    void initializeControllers(unsigned short port); 
+    void cleanupResources();                        
     void handleNewClientConnection(std::unique_ptr<Utils::TCPSocket> client, int& unknownCount);
 };
 
