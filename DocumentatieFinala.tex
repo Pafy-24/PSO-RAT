@@ -38,7 +38,7 @@ Remote Administration Tools (RAT) sunt aplicații software care permit controlul
 Proiectul PSO-RAT a fost dezvoltat în cadrul cursului de Proiectarea Sistemelor de Operare la Academia Tehnică Militară și implementează o arhitectură client-server complexă care demonstrează:
 
 \begin{itemize}
-\item \textbf{Gestionarea memoriei} — Smart pointers (unique\_ptr, shared\_ptr) și pattern-ul RAII pentru management automat al resurselor
+\item \textbf{Gestionarea memoriei} — Smart pointers (unique\_ptr, shared\_ptr) pentru management automat al resurselor
 \item \textbf{Semnale de sistem} — Manipularea SIGINT pentru shutdown graceful și cleanup resurse
 \item \textbf{Pipe-uri} — Utilizarea popen() pentru execuție comenzi shell și capturare output
 \item \textbf{Procese} — fork(), exec(), wait() pentru crearea și gestionarea proceselor copil
@@ -413,7 +413,7 @@ părinte continuă imediat
 
 Sistemul a fost testat pe:
 \begin{itemize}
-\item \textbf{OS}: Arch Linux 6.1.0, Ubuntu 22.04 LTS
+\item \textbf{OS}: Kali Linux 
 \item \textbf{Compilator}: GCC 13.2.1, C++17
 \item \textbf{Librării}: SFML 2.6.0, nlohmann-json 3.11.2
 \end{itemize}
@@ -429,7 +429,7 @@ Sistemul a fost testat pe:
 
 \textbf{Test 2: Execuție comenzi concurente}
 \begin{itemize}
-\item Trimis comenzi bash către 3 clienți în paralel
+\item Trimis comenzi bash către 3 clienți
 \item Verificat că output-urile nu se amestecă
 \item \textbf{Rezultat}: Fiecare răspuns asociat corect cu clientul său, sincronizare corectă
 \end{itemize}
@@ -478,6 +478,13 @@ Sistemul a fost testat pe:
 \item \textbf{TLS/SSL}: Adăugare criptare prin OpenSSL
 \item \textbf{Asincron I/O}: Refactoring către epoll/io\_uring pentru scalabilitate
 \item \textbf{Thread Pool}: Înlocuirea thread-urilor dedicate cu pool de workers
+\end{itemize}
+
+\subsection{Module Propuse}
+\begin{itemize}
+\item \textbf{KeyLogging}: Adăugare logging per client pentru tastele apasate
+\item \textbf{NetworkCapture}: Salvare PCAP per client cu tshark
+\item \textbf{LiveStream}: LiveStreamming service
 \end{itemize}
 
 \section{Concluzii}
