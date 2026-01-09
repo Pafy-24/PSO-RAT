@@ -1,27 +1,23 @@
-SRCDIR := src
-INCDIR := include
-OBJDIR := ../build_make/obj_utils
-OUT := ../build_make/libutils.so
+CXX = g++
+CXXFLAGS = -std=c++17 -O2 -fPIC -Iinclude -Wall -Wextra
+LDFLAGS = -shared -lsfml-network -lsfml-system
 
-CC := g++
-CFLAGS := -std=c++17 -O2 -fPIC -I$(INCDIR) -Wall -Wextra
-LDFLAGS := -shared
+OBJ_DIR = ../build_make/obj_utils
+OUT = ../build_make/libutils.so
 
-SRCS := $(wildcard $(SRCDIR)/*.cpp)
-OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
+SRCS = src/TCPSocket.cpp src/UDPSocket.cpp
+OBJS = $(OBJ_DIR)/TCPSocket.o $(OBJ_DIR)/UDPSocket.o
 
 all: $(OUT)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(OUT): $(OBJS)
+	$(CXX) $(LDFLAGS) -o $@ $^
 
-$(OUT): $(OBJS) | $(OBJDIR)
-	$(CC) $(LDFLAGS) -o $@ $(OBJS) -lsfml-network -lsfml-system
-
-$(OBJDIR):
-	mkdir -p $(OBJDIR)
+$(OBJ_DIR)/%.o: src/%.cpp
+	@mkdir -p $(OBJ_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(OBJDIR) $(OUT)
+	rm -rf $(OBJ_DIR) $(OUT)
 
 .PHONY: all clean

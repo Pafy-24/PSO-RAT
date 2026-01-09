@@ -2,6 +2,7 @@
 #include "ServerManager.hpp"
 #include "ServerLogController.hpp"
 #include "ServerFileController.hpp"
+#include "Utils/Base64.hpp"
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -295,23 +296,7 @@ std::string ServerCommandController::handleScreenshot(const std::string &name) {
     if (!resp.contains("success") || !resp["success"].get<bool>()) return "Failed\n";
     if (!resp.contains("data")) return "No data\n";
     
-    std::string b64 = resp["data"].get<std::string>();
-    std::string img;
-    
-    static const std::string b64c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    int val = 0, valb = -8;
-    for (unsigned char c : b64) {
-        if (c == '=') break;
-        if (std::isspace(c)) continue;
-        size_t pos = b64c.find(c);
-        if (pos == std::string::npos) continue;
-        val = (val << 6) + pos;
-        valb += 6;
-        if (valb >= 0) {
-            img.push_back(char((val >> valb) & 0xFF));
-            valb -= 8;
-        }
-    }
+    std::string img = Utils::base64_decode(resp["data"].get<std::string>());
     
     auto t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::string fn = "/tmp/ss_" + targetClient + "_" + std::to_string(t) + ".png";

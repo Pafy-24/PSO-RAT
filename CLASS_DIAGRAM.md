@@ -1,87 +1,76 @@
 # PSO-RAT Class Diagram
 
 ## Overview
-Această diagramă prezintă relațiile între clasele principale din proiectul PSO-RAT.
+Arhitectură simplificată cu management centralizat și comunicare sincronă.
 
 ```mermaid
 classDiagram
-    %% Core Interface
-    class IController {
-        <<interface>>
-        +start() void
-        +stop() void
-        +sendJson(json) bool
-        +receiveJson(json&) bool
-        +handleJson(json) bool
-    }
-
-    %% Server Manager - Central orchestrator
     class ServerManager {
         <<singleton>>
-        -instance: shared_ptr~ServerManager~
-        -clients_: map~string, unique_ptr~TCPSocket~~
+        -clientManagement_: unique_ptr~ClientManagement~
         -controllers_: map~string, unique_ptr~IController~~
         -listener_: unique_ptr~TCPSocket~
-        -logs_: queue~string~
         -port_: unsigned short
         -running_: bool
         +getInstance() shared_ptr~ServerManager~
         +start(port) bool
         +stop() void
-        +run(port) int
-        +addClient(name, socket) bool
-        +removeClient(name) bool
-        +getClient(name) TCPSocket*
-        +getController(name) IController*
-        +getServerController(name) ServerController*
-        +listClients() vector~string~
+        +sendRequest(clientName, json) bool
+        +receiveResponse(clientName, json&, timeout) bool
         +hasClient(name) bool
+        +listClients() vector~string~
+        +getClientIP(name) string
+        +removeClient(name) bool
         +pushLog(msg) void
-        +popLog(out) bool
     }
 
-    %% Server Controllers
-    class ServerController {
-        -socket_: TCPSocket*
+    class ClientManagement {
         -manager_: ServerManager*
-        -deviceName_: string
-        -pingThread_: unique_ptr~thread~
-        -recvThread_: unique_ptr~thread~
-        -running_: atomic~bool~
-        +ServerController(socket)
-        +ServerController(manager, name, socket)
-        +isValid() bool
-        +sendJson(obj) bool
-        +receiveJson(out) bool
+        -clients_: map~string, unique_ptr~TCPSocket~~
+        -clientIPs_: map~string, string~
+        -mtx_: mutex
+        +addClient(name, socket) bool
+        +removeClient(name) bool
+        +hasClient(name) bool
+        +getClient(name) TCPSocket*
+        +listClients() vector~string~
+        +getClientIP(name) string
+        +generateUniqueDeviceName(base, counter&) string
+        +cleanup() void
+    }
+
+    class IController {
+        <<interface>>
+        #manager_: ServerManager*
         +start() void
         +stop() void
+        +handle(json) void
     }
 
     class ServerCommandController {
-        -manager_: ServerManager*
-        -running_: bool
         -stdinThread_: unique_ptr~thread~
-        +start() void
-        +stop() void
+        -selectedClient_: string
+        -running_: bool
+        +handleList() string
+        +handleChoose(name) string
+        +handleKill(name) string
+        +handleKillAll() string
+        +handleBash(name, cmd) string
+        +handleScreenshot(name) string
+        +handleQuit() string
+        +handleShowLogs() string
         -processLine(line) string
-        -handleList() string
-        -handleChoose(name) string
-        -handleKill(name) string
-        -handleBash(name, cmd) string
-        -handleQuit() string
-        -handleShowLogs() string
         -spawnTerminal(cmd) pid_t
-        -stdinLoop() void
+    }
+
+    class ServerFileController {
+        +handleDownload(client, remote, local) string
+        +handleUpload(client, local, remote) string
     }
 
     class ServerLogController {
-        -manager_: ServerManager*
-        -running_: bool
-        -thread_: unique_ptr~thread~
-        +start() void
-        +stop() void
+        -logPath_: string
         +showLogs(path) string
-        +handleJson(params) bool
     }
 
     class ServerPingController {
@@ -89,115 +78,219 @@ classDiagram
         +stop() void
     }
 
-    %% Client Side
     class ClientManager {
-        -controllers_: map~string, unique_ptr~ClientController~~
+        -socket_: shared_ptr~TCPSocket~
+        -clientControllers: map~string, unique_ptr~ClientController~~
         -running_: bool
-        +connectTo(address, port) bool
+        +connect(ip, port) bool
         +disconnect() void
         +run() int
-        +getController(name) ClientController*
     }
 
     class ClientController {
-        -socket_: shared_ptr~TCPSocket~
-        +ClientController(socket)
-        +sendJson(obj) bool
-        +receiveJson(out) bool
-        +isValid() bool
+        <<interface>>
+        +handleCommand(json) json
+    }
+
+    class ClientBashController {
+        +handleCommand(json) json
+    }
+
+    class ClientFileController {
+        +handleCommand(json) json
+        +handleDownload(path) json
+        +handleUpload(path, data) json
+    }
+
+    class ClientScreenshotController {
+        +handleCommand(json) json
+        +takeScreenshot() json
     }
 
     class ClientPingController {
-        +start() void
-        +stop() void
+        +handleCommand(json) json
     }
 
-    %% Utils
+    class ClientKillController {
+        +handleCommand(json) json
+    }
+
     class TCPSocket {
-        <<wrapper>>
-        -socket_: sf::TcpSocket
-        -listener_: sf::TcpListener
-        +connect(address, port) bool
-        +send(message) bool
-        +receive(out) bool
-        +listen(port) bool
-        +accept() unique_ptr~TCPSocket~
+        -socket_: TcpSocket
+        -listener_: TcpListener
+        +connect(ip, port) bool
+        +send(msg) bool
+        +receive(msg&) bool
         +bind(port) bool
+        +accept() unique_ptr~TCPSocket~
         +close() void
         +setBlocking(blocking) void
+        +getRemoteAddress() string
     }
 
-    class Socket {
-        <<abstract>>
-        +bind(port) bool
-        +close() void
+    class Base64 {
+        <<utility>>
+        +base64_encode(input) string
+        +base64_decode(input) string
     }
 
-    %% Relationships
-    IController <|-- ServerController : implements
-    IController <|-- ServerCommandController : implements
-    IController <|-- ServerLogController : implements
-    IController <|-- ServerPingController : implements
-    
-    ServerController <|-- ServerCommandController : extends
-    ServerController <|-- ServerLogController : extends
-    ServerController <|-- ServerPingController : extends
-
-    ServerManager "1" o-- "0..*" IController : controllers_
-    ServerManager "1" o-- "0..*" TCPSocket : clients_
+    ServerManager "1" *-- "1" ClientManagement : owns
+    ServerManager "1" o-- "*" IController : controllers_
     ServerManager "1" -- "1" TCPSocket : listener_
-
-    ServerController "1" --> "1" TCPSocket : uses
-    ServerController "1" --> "1" ServerManager : manager_
-
-    ClientManager "1" o-- "0..*" ClientController : controllers_
-    ClientController "1" --> "1" TCPSocket : socket_
-
-    Socket <|-- TCPSocket : extends
-
-    %% Notes
-    note for ServerManager "Singleton pattern\nCentral resource owner\nManages client connections\nand controller lifecycle"
     
-    note for IController "Base interface for all controllers\nDefines JSON communication\nand lifecycle methods"
+    ClientManagement "1" o-- "*" TCPSocket : clients_
     
-    note for ServerController "Per-client controller\nHandles ping/recv threads\nManages client communication"
+    IController <|-- ServerCommandController
+    IController <|-- ServerFileController
+    IController <|-- ServerLogController
+    IController <|-- ServerPingController
     
-    note for ServerCommandController "Admin interface controller\nHandles CLI commands\nNo network socket needed"
+    ClientController <|-- ClientBashController
+    ClientController <|-- ClientFileController
+    ClientController <|-- ClientScreenshotController
+    ClientController <|-- ClientPingController
+    ClientController <|-- ClientKillController
     
-    note for TCPSocket "SFML wrapper\nProvides simplified API\nfor TCP operations"
+    ClientManager "1" o-- "*" ClientController : controllers
+    ClientManager "1" --> "1" TCPSocket : socket_
+    
+    ServerFileController ..> Base64 : uses
+    ServerCommandController ..> Base64 : uses
+    ClientFileController ..> Base64 : uses
+    ClientScreenshotController ..> Base64 : uses
 ```
 
 ## Explicația Arhitecturii
 
-### Componente Principale
+### Componente Server
 
 1. **ServerManager** (Singleton)
-   - Orchestratorul central al serverului
-   - Gestionează două colecții importante:
-     - `clients_`: socket-urile TCP ale clienților conectați
-     - `controllers_`: obiectele care implementează logica pentru fiecare client/serviciu
+   - Punct central de coordonare
+   - Gestionează listener-ul și controller-ele
+   - Oferă API sincron: `sendRequest()` + `receiveResponse()`
+   - Logging centralizat în `/tmp/rat_server.log`
 
-2. **IController** (Interface)
-   - Interfața de bază pentru toate controller-ele
-   - Definește metodele standard: `start()`, `stop()`, `sendJson()`, `receiveJson()`, `handleJson()`
+2. **ClientManagement**
+   - Gestionează harta de clienți conectați
+   - Thread-safe cu mutex
+   - Generează nume unice pentru clienți
+   - Cleanup la închidere
 
-3. **ServerController** (Per-Client)
-   - Gestionează comunicarea cu un client specific
-   - Rulează thread-uri pentru ping și recepție mesaje
-   - Implementează protocolul JSON cu clientul
+3. **Server Controllers**
+   - **ServerCommandController**: Comenzi admin (list, choose, kill, bash, screenshot, upload, download)
+   - **ServerFileController**: Transfer de fișiere (upload/download)
+   - **ServerLogController**: Gestionare logs
+   - **ServerPingController**: Keep-alive
 
-4. **ServerCommandController** (Admin)
-   - Gestionează comenzile administrative prin stdin
-   - Nu folosește socket TCP (doar pentru comenzi locale)
-   - Implementează comenzile: list, choose, kill, bash, showlogs, quit
+### Componente Client
 
-5. **ServerLogController** (Logging)
-   - Gestionează log-urile serverului
-   - Poate spawna terminal-uri pentru vizualizarea log-urilor
+1. **ClientManager**
+   - Conectare la server
+   - Routing mesaje către controller-ele corespunzătoare
 
-### Fluxul de Date
+2. **Client Controllers**
+   - **ClientBashController**: Execută comenzi shell
+   - **ClientFileController**: Download/upload fișiere
+   - **ClientScreenshotController**: Capturează ecranul
+   - **ClientPingController**: Răspunde la ping
+   - **ClientKillController**: Închide clientul
 
-1. **Conectarea Clientului:**
+### Utils
+
+- **TCPSocket**: Wrapper SFML pentru comunicare TCP
+- **Base64**: Header-only library pentru encoding/decoding
+
+### Fluxul de Comunicare
+
+1. **Client Registration:**
+   ```
+   Client → Server: Connect TCP
+   Server: acceptClient() → ClientManagement::addClient()
+   Server → Client: {"type": "register"}
+   Client → Server: {"hostname": "...", "os": "...", "kernel": "..."}
+   Server: Generează nume unic (ex: "arch_0")
+   ```
+
+2. **Command Execution (Sincron):**
+   ```
+   Admin: bash arch_0 ls
+   ServerCommandController → ServerManager::sendRequest()
+   ServerManager → ClientManagement::getClient()
+   Server → Client: {"type": "bash", "command": "ls"}
+   ServerManager::receiveResponse() ← blocking
+   Client → Server: {"output": "file1\nfile2\n"}
+   Admin: afișează output
+   ```
+
+3. **File Download:**
+   ```
+   Admin: download arch_0 /etc/passwd local.txt
+   ServerCommandController → ServerFileController
+   ServerFileController::handleDownload()
+   Server → Client: {"type": "download", "path": "/etc/passwd"}
+   Client: citește fișier + Base64::encode()
+   Client → Server: {"data": "cm9vdDp4OjA6MA=="}
+   Server: Base64::decode() + scrie în local.txt
+   ```
+
+4. **Screenshot:**
+   ```
+   Admin: screenshot arch_0
+   Server → Client: {"type": "screenshot"}
+   Client: SFML screenshot → PNG buffer
+   Client: Base64::encode(PNG)
+   Client → Server: {"image": "iVBORw0KGgoAAAANSUhEUg..."}
+   Server: Base64::decode() → scrot.png
+   Server: spawn eog scrot.png
+   ```
+
+5. **Ping/Keep-Alive:**
+   ```
+   ServerPingController: periodic timer
+   Server → All Clients: {"type": "ping"}
+   Client → Server: {"type": "pong"}
+   (dacă nu răspunde → removeClient())
+   ```
+
+## Detalii Implementare
+
+### Sincronizare
+- **Nu există thread-uri per client pe server**
+- Toate operațiile sunt sincrone: sendRequest → receiveResponse
+- ClientManagement folosește mutex pentru accesul la harta de clienți
+- Logging este thread-safe cu append atomic
+
+### Comunicare JSON
+- Toate mesajele sunt JSON (nlohmann/json)
+- Format: `{"type": "...", ...params}`
+- Fiecare controller implementează propriul protocol
+
+### Base64 Usage
+- Header-only library în `Utils/include/Utils/Base64.hpp`
+- Folosit pentru transfer binar în JSON:
+  - Upload/download fișiere
+  - Screenshot PNG
+- Functions: `Base64::base64_encode()`, `Base64::base64_decode()`
+
+### Error Handling
+- Socket timeout: 5 secunde pentru operații
+- Client disconnect: cleanup automat prin ClientManagement
+- Failed commands: return error string în JSON response
+
+## Build Structure
+
+```
+build_make/
+├── libutils.so        # TCPSocket, UDPSocket (no Base64, e header-only)
+├── rat_server         # Server executable
+├── rat_client         # Client executable
+└── log_script         # Logging utility
+```
+
+### Dependencies
+- SFML Network, System, Window, Graphics
+- nlohmann/json
+- C++17
    ```
    Client → ServerManager.listener_ → ServerManager.run()
    → Creare TCPSocket în clients_[deviceName]

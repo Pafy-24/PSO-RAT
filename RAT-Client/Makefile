@@ -1,16 +1,16 @@
-CC := g++
-CFLAGS := -std=c++17 -O2 -Wall -Wextra
-INCLUDES := -Iinclude -I../Utils/include
-SRC := src/main.cpp src/ClientController.cpp src/ClientManager.cpp src/ClientPingController.cpp src/ClientBashController.cpp src/ClientKillController.cpp src/ClientFileController.cpp src/ClientScreenshotController.cpp
-OUT := ../build_make/rat_client
+CXX = g++
+CXXFLAGS = -std=c++17 -O2
+INCLUDES = -Iinclude -I../Utils/include
+LDFLAGS = -L../build_make -lutils -lsfml-network -lsfml-system -Wl,-rpath,'$$ORIGIN'
+
+OUT = ../build_make/rat_client
+SRCS = src/*.cpp
 
 all: $(OUT)
 
-LIBS := -L../build_make -lutils -lsfml-network -lsfml-system -Wl,-rpath,'$$ORIGIN'
-
-$(OUT): $(SRC)
+$(OUT): $(SRCS)
 	@mkdir -p ../build_make
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LIBS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
 clean:
 	rm -f $(OUT)

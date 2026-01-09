@@ -25,7 +25,6 @@ std::shared_ptr<ServerManager> ServerManager::getInstance() {
 }
 
 ServerManager::ServerManager() {
-    
     clientManagement_ = std::make_unique<ClientManagement>(this);
 }
 

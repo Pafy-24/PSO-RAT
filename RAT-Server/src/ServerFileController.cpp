@@ -1,5 +1,6 @@
 #include "ServerFileController.hpp"
 #include "ServerManager.hpp"
+#include "Utils/Base64.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -108,38 +109,7 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
     if (!response.contains("success") || !response["success"].get<bool>()) return "Failed\n";
     if (!response.contains("data")) return "Error\n";
     
-    std::string data = response["data"].get<std::string>();
-    std::string decoded;
-    
-    static const char decode_table[256] = {
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
-        52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
-        -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
-        15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
-        -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-        41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
-    };
-    
-    int val = 0, valb = -8;
-    for (unsigned char c : data) {
-        if (decode_table[c] == -1) break;
-        val = (val << 6) + decode_table[c];
-        valb += 6;
-        if (valb >= 0) {
-            decoded.push_back(char((val >> valb) & 0xFF));
-            valb -= 8;
-        }
-    }
+    std::string decoded = Utils::base64_decode(response["data"].get<std::string>());
     
     std::string actualPath = expandPath(localPath);
     
@@ -184,23 +154,7 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
         return "File too large (max 50MB)\n";
     }
     
-    static const char* base64_chars = 
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789+/";
-    
-    std::string encoded;
-    int val = 0, valb = -6;
-    for (unsigned char c : content) {
-        val = (val << 8) + c;
-        valb += 8;
-        while (valb >= 0) {
-            encoded.push_back(base64_chars[(val >> valb) & 0x3F]);
-            valb -= 6;
-        }
-    }
-    if (valb > -6) encoded.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
-    while (encoded.size() % 4) encoded.push_back('=');
+    std::string encoded = Utils::base64_encode(content);
     
     std::string actualRemotePath = remotePath;
     if (remotePath == "." || remotePath.back() == '/' || remotePath.find('.') == std::string::npos) {

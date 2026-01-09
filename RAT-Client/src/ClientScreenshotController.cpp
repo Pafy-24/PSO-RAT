@@ -1,4 +1,5 @@
 #include "ClientScreenshotController.hpp"
+#include "Utils/Base64.hpp"
 #include <fstream>
 #include <cstdlib>
 #include <unistd.h>
@@ -8,31 +9,6 @@
 #include <iomanip>
 
 namespace Client {
-
-static std::string base64_encode_impl(const std::string &input) {
-    static const char* base64_chars = 
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789+/";
-    
-    std::string output;
-    int val = 0, valb = -6;
-    for (unsigned char c : input) {
-        val = (val << 8) + c;
-        valb += 8;
-        while (valb >= 0) {
-            output.push_back(base64_chars[(val >> valb) & 0x3F]);
-            valb -= 6;
-        }
-    }
-    if (valb > -6) output.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
-    while (output.size() % 4) output.push_back('=');
-    return output;
-}
-
-std::string ClientScreenshotController::base64_encode(const std::string &input) {
-    return base64_encode_impl(input);
-}
 
 nlohmann::json ClientScreenshotController::handleCommand(const nlohmann::json &cmd) {
     nlohmann::json reply;
@@ -115,8 +91,7 @@ nlohmann::json ClientScreenshotController::takeScreenshot() {
         return reply;
     }
     
-    
-    std::string encoded = base64_encode(fileData);
+    std::string encoded = Utils::base64_encode(fileData);
     
     reply["success"] = true;
     reply["data"] = encoded;

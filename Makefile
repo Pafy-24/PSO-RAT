@@ -1,32 +1,25 @@
-PREFIX ?= /usr/local
-BINDIR ?= $(PREFIX)/bin
-BUILD_DIR := build_make
+CXX = g++
+CXXFLAGS = -std=c++17 -O2 -Wall -Wextra
+LDFLAGS = -lsfml-network -lsfml-system
 
-CC := g++
-CFLAGS := -std=c++17 -O2 -Wall -Wextra
+SERVER_SRC = RAT-Server/src/*.cpp
+CLIENT_SRC = RAT-Client/src/*.cpp
 
-SERVER_DIR := RAT-Server
-CLIENT_DIR := RAT-Client
+all: build_make/rat_server build_make/rat_client
 
-all: $(BUILD_DIR)/libutils.so $(BUILD_DIR)/rat_server $(BUILD_DIR)/rat_client
-
-SRV_SRCS := $(filter-out $(SERVER_DIR)/src/LogScriptMain.cpp $(SERVER_DIR)/src/ServerController.cpp, $(wildcard $(SERVER_DIR)/src/*.cpp))
-CLI_SRCS := $(wildcard $(CLIENT_DIR)/src/*.cpp)
-
-$(BUILD_DIR)/rat_server: $(SRV_SRCS) | $(BUILD_DIR) $(BUILD_DIR)/libutils.so
-	$(CC) $(CFLAGS) -IUtils/include -I$(SERVER_DIR)/include -o $@ $^ -L$(BUILD_DIR) -lutils -lsfml-network -lsfml-system -Wl,-rpath,'$$ORIGIN'
-
-$(BUILD_DIR)/rat_client: $(CLI_SRCS) | $(BUILD_DIR) $(BUILD_DIR)/libutils.so
-	$(CC) $(CFLAGS) -IUtils/include -I$(CLIENT_DIR)/include -o $@ $^ -L$(BUILD_DIR) -lutils -lsfml-network -lsfml-system -Wl,-rpath,'$$ORIGIN'
-
-$(BUILD_DIR)/libutils.so:
+build_make/libutils.so:
 	$(MAKE) -C Utils
 
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+build_make/rat_server: $(SERVER_SRC) build_make/libutils.so
+	@mkdir -p build_make
+	$(CXX) $(CXXFLAGS) -IUtils/include -IRAT-Server/include -o $@ $(SERVER_SRC) -Lbuild_make -lutils $(LDFLAGS) -Wl,-rpath,'$$ORIGIN'
+
+build_make/rat_client: $(CLIENT_SRC) build_make/libutils.so
+	@mkdir -p build_make
+	$(CXX) $(CXXFLAGS) -IUtils/include -IRAT-Client/include -o $@ $(CLIENT_SRC) -Lbuild_make -lutils $(LDFLAGS) -Wl,-rpath,'$$ORIGIN'
 
 clean:
 	$(MAKE) -C Utils clean || true
-	rm -rf $(BUILD_DIR)
+	rm -rf build_make
 
 .PHONY: all clean
