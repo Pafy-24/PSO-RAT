@@ -82,15 +82,15 @@ pid_t ServerLogController::spawnTerminal(const std::string &innerCmd) {
         }
         
         if (prog == "qterminal") {
-            execlp("qterminal", "qterminal", "-e", innerCmd.c_str(), (char*)NULL);
+            execlp("qterminal", "qterminal", "-e", "bash", "-c", innerCmd.c_str(), (char*)NULL);
         } else if (prog == "xfce4-terminal") {
-            execlp("xfce4-terminal", "xfce4-terminal", "-e", innerCmd.c_str(), (char*)NULL);
+            execlp("xfce4-terminal", "xfce4-terminal", "-e", "bash", "-c", innerCmd.c_str(), (char*)NULL);
         } else if (prog == "konsole") {
-            execlp("konsole", "konsole", "-e", innerCmd.c_str(), (char*)NULL);
+            execlp("konsole", "konsole", "-e", "bash", "-c", innerCmd.c_str(), (char*)NULL);
         } else if (prog == "gnome-terminal") {
             execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", innerCmd.c_str(), (char*)NULL);
         } else if (prog == "xterm") {
-            execlp("xterm", "xterm", "-e", innerCmd.c_str(), (char*)NULL);
+            execlp("xterm", "xterm", "-e", "bash", "-c", innerCmd.c_str(), (char*)NULL);
         }
         _exit(127);
     }

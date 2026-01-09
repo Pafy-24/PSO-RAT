@@ -7,11 +7,11 @@ Arhitectură simplificată cu management centralizat și comunicare sincronă.
 classDiagram
     class ServerManager {
         <<singleton>>
-        -clientManagement_: unique_ptr~ClientManagement~
-        -controllers_: map~string, unique_ptr~IController~~
-        -listener_: unique_ptr~TCPSocket~
-        -port_: unsigned short
-        -running_: bool
+        -clientManagement: unique_ptr~ClientManagement~
+        -controllers: map~string, unique_ptr~IController~~
+        -listener: unique_ptr~TCPSocket~
+        -port: unsigned short
+        -running: bool
         +getInstance() shared_ptr~ServerManager~
         +start(port) bool
         +stop() void
@@ -22,13 +22,15 @@ classDiagram
         +getClientIP(name) string
         +removeClient(name) bool
         +pushLog(msg) void
+        +getPort() unsigned short
+        +getLogPath() string
     }
 
     class ClientManagement {
-        -manager_: ServerManager*
-        -clients_: map~string, unique_ptr~TCPSocket~~
-        -clientIPs_: map~string, string~
-        -mtx_: mutex
+        -manager: ServerManager*
+        -clients: map~string, unique_ptr~TCPSocket~~
+        -clientIPs: map~string, string~
+        -mtx: mutex
         +addClient(name, socket) bool
         +removeClient(name) bool
         +hasClient(name) bool
@@ -41,16 +43,16 @@ classDiagram
 
     class IController {
         <<interface>>
-        #manager_: ServerManager*
+        #manager: ServerManager*
         +start() void
         +stop() void
         +handle(json) void
     }
 
     class ServerCommandController {
-        -stdinThread_: unique_ptr~thread~
-        -selectedClient_: string
-        -running_: bool
+        -stdinThread: unique_ptr~thread~
+        -selectedClient: string
+        -running: bool
         +handleList() string
         +handleChoose(name) string
         +handleKill(name) string
@@ -60,7 +62,6 @@ classDiagram
         +handleQuit() string
         +handleShowLogs() string
         -processLine(line) string
-        -spawnTerminal(cmd) pid_t
     }
 
     class ServerFileController {
@@ -69,8 +70,14 @@ classDiagram
     }
 
     class ServerLogController {
-        -logPath_: string
-        +showLogs(path) string
+        -logPath: string
+        -logs: queue~string~
+        -logMtx: mutex
+        +pushLog(msg) void
+        +popLog(out&) bool
+        +getLogPath() string
+        +showLogs() string
+        -spawnTerminal(cmd) pid_t
     }
 
     class ServerPingController {
@@ -79,9 +86,9 @@ classDiagram
     }
 
     class ClientManager {
-        -socket_: shared_ptr~TCPSocket~
+        -socket: shared_ptr~TCPSocket~
         -clientControllers: map~string, unique_ptr~ClientController~~
-        -running_: bool
+        -running: bool
         +connect(ip, port) bool
         +disconnect() void
         +run() int
@@ -116,8 +123,8 @@ classDiagram
     }
 
     class TCPSocket {
-        -socket_: TcpSocket
-        -listener_: TcpListener
+        -socket: TcpSocket
+        -listener: TcpListener
         +connect(ip, port) bool
         +send(msg) bool
         +receive(msg&) bool
@@ -135,10 +142,10 @@ classDiagram
     }
 
     ServerManager "1" *-- "1" ClientManagement : owns
-    ServerManager "1" o-- "*" IController : controllers_
-    ServerManager "1" -- "1" TCPSocket : listener_
+    ServerManager "1" o-- "*" IController : controllers
+    ServerManager "1" -- "1" TCPSocket : listener
     
-    ClientManagement "1" o-- "*" TCPSocket : clients_
+    ClientManagement "1" o-- "*" TCPSocket : clients
     
     IController <|-- ServerCommandController
     IController <|-- ServerFileController
@@ -152,7 +159,7 @@ classDiagram
     ClientController <|-- ClientKillController
     
     ClientManager "1" o-- "*" ClientController : controllers
-    ClientManager "1" --> "1" TCPSocket : socket_
+    ClientManager "1" --> "1" TCPSocket : socket
     
     ServerFileController ..> Base64 : uses
     ServerCommandController ..> Base64 : uses
@@ -292,9 +299,9 @@ build_make/
 - nlohmann/json
 - C++17
    ```
-   Client → ServerManager.listener_ → ServerManager.run()
-   → Creare TCPSocket în clients_[deviceName]
-   → Creare ServerController în controllers_[deviceName]
+   Client → ServerManager.listener → ServerManager.run()
+   → Creare TCPSocket în clients[deviceName]
+   → Creare ServerController în controllers[deviceName]
    → ServerController.start()
    ```
 
@@ -320,6 +327,6 @@ build_make/
 
 ### Puncte de Atenție
 
-- **Sincronizarea:** Utilizarea mutex-urilor pentru accesul la `clients_` și `controllers_`
+- **Sincronizarea:** Utilizarea mutex-urilor pentru accesul la `clients` și `controllers`
 - **Durata de Viață:** Controller-ele trebuie oprite înainte de închiderea socket-urilor
 - **Dependency Injection:** Controller-ele primesc referințe la ServerManager și socket-uri
