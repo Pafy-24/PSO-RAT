@@ -168,7 +168,7 @@ Killed arch_0
 ## Arhitectură și Sincronizare
 
 ### Thread-Safety
-- **ClientManagement**: `std::mutex` protejează harta `clients_`
+- **ClientManagement**: `std::mutex` protejează harta `clients`
 - **Logging**: `std::mutex` pentru accesul la queue-ul de log-uri
 - **Socket I/O**: Operații blocking cu timeout pentru evitarea deadlock-urilor
 
@@ -204,9 +204,9 @@ Killed arch_0
 | **Socket TCP** | Wrapper SFML, listener non-blocking | `Utils/TCPSocket.cpp` |
 | **Socket UDP** | Keep-alive ping/pong | `Utils/UDPSocket.cpp` |
 | **Thread-uri** | stdin thread, ping threads | `ServerCommandController.cpp` |
-| **Mutex** | Protecție `clients_`, `logs_` | `ServerManager.cpp` |
+| **Mutex** | Protecție `clients`, `logs` | `ServerManager.cpp`, `ClientManagement.cpp` |
 | **Pipe-uri** | `popen()` pentru comenzi shell | `ClientBashController.cpp` |
-| **fork/exec** | Spawn terminal pentru logs | `ServerCommandController.cpp` |
+| **fork/exec** | Spawn terminal pentru logs | `ServerLogController.cpp` |
 | **Semnale** | Graceful shutdown | `main.cpp` |
 | **Smart pointers** | `unique_ptr`, `shared_ptr` | Throughout |
 
