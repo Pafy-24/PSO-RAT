@@ -39,7 +39,6 @@ Proiectul PSO-RAT a fost dezvoltat în cadrul cursului de Proiectarea Sistemelor
 
 \begin{itemize}
 \item \textbf{Gestionarea memoriei} — Smart pointers (unique\_ptr, shared\_ptr) pentru management automat al resurselor
-\item \textbf{Semnale de sistem} — Manipularea SIGINT pentru shutdown graceful și cleanup resurse
 \item \textbf{Pipe-uri} — Utilizarea popen() pentru execuție comenzi shell și capturare output
 \item \textbf{Procese} — fork(), exec(), wait() pentru crearea și gestionarea proceselor copil
 \item \textbf{Thread-uri} — Arhitectură multi-threading pentru execuție concurentă și non-blocking I/O
@@ -59,7 +58,7 @@ Sistemul este organizat într-o arhitectură client-server clasică, cu un serve
 
 Serverul este structurat în mai multe module specializate:
 
-\textbf{ServerManager} — Singleton care coordonează întregul server. Gestionează listener-ul TCP pentru acceptarea clienților noi și menține referințe către toate controller-ele active. Implementează pattern-ul RAII pentru cleanup automat al resurselor la închidere prin destructori.
+\textbf{ServerManager} — Singleton care coordonează întregul server. Gestionează listener-ul TCP pentru acceptarea clienților noi și menține referințe către toate controller-ele active. Implementează send și receive, utilități pentru controllere și gestionarea comunicării între server și clienți.
 
 \textbf{ClientManagement} — Modul centralizat responsabil cu gestionarea thread-safe a clienților conectați. Folosește std::mutex pentru protejarea accesului concurrent la harta de clienți și implementează generarea automată de nume unice pentru fiecare client conectat (ex: arch\_0, ubuntu\_1).
 
