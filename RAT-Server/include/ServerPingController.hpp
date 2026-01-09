@@ -25,10 +25,10 @@ public:
     std::string getHandle() const override { return "ping"; }
 
 private:
-    ServerManager *manager_;
-    std::unique_ptr<Utils::UDPSocket> udpSocket_;
-    std::atomic<bool> running_{false};
-    std::unique_ptr<std::thread> udpThread_;
+    ServerManager *manager;
+    std::unique_ptr<Utils::UDPSocket> udpSocket;
+    std::atomic<bool> running{false};
+    std::unique_ptr<std::thread> udpThread;
 };
 
 } 

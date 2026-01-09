@@ -5,9 +5,9 @@
 namespace Client {
 
 ClientPingController::ClientPingController() 
-    : udpSocket_(std::make_unique<Utils::UDPSocket>()) {
-    if (udpSocket_) {
-        udpSocket_->setBlocking(false);
+    : udpSocket(std::make_unique<Utils::UDPSocket>()) {
+    if (udpSocket) {
+        udpSocket->setBlocking(false);
     }
 }
 
@@ -26,12 +26,12 @@ bool ClientPingController::discoverServer(const sf::IpAddress &serverIp,
                                          unsigned short udpPort,
                                          int maxAttempts,
                                          int intervalMs) {
-    if (!udpSocket_) return false;
+    if (!udpSocket) return false;
     
     for (int i = 0; i < maxAttempts; ++i) {
         
         std::string ping = "ping";
-        udpSocket_->sendTo(ping, serverIp, udpPort);
+        udpSocket->sendTo(ping, serverIp, udpPort);
         
         
         std::string resp;
@@ -42,7 +42,7 @@ bool ClientPingController::discoverServer(const sf::IpAddress &serverIp,
         auto startTime = std::chrono::steady_clock::now();
         while (std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::steady_clock::now() - startTime).count() < intervalMs) {
-            if (udpSocket_->receive(resp, sender, senderPort)) {
+            if (udpSocket->receive(resp, sender, senderPort)) {
                 if (resp == "pong") {
                     return true; 
                 }

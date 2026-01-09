@@ -10,7 +10,6 @@
 namespace Server {
 
 class ServerManager;
-class ServerLogController;
 
 /**
  * ClientManagement - Manages connected clients and their controllers
@@ -51,12 +50,12 @@ public:
     std::string generateUniqueDeviceName(const std::string& base, int& counter) const;
 
 private:
-    ServerManager* manager_;
-    mutable std::mutex mtx_;
+    ServerManager* manager;
+    mutable std::mutex mtx;
     
     
-    std::map<std::string, std::unique_ptr<Utils::TCPSocket>> clients_;
-    std::map<std::string, std::string> clientIPs_;
+    std::map<std::string, std::unique_ptr<Utils::TCPSocket>> clients;
+    std::map<std::string, std::string> clientIPs;
     
     void logMessage(const std::string &msg);
 };

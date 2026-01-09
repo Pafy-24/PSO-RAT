@@ -31,8 +31,8 @@ public:
     void close() override;
 
 private:
-    sf::TcpSocket socket_;
-    sf::TcpListener listener_;
+    sf::TcpSocket socket;
+    sf::TcpListener listener;
 };
 
 } 

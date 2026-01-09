@@ -22,7 +22,7 @@ public:
     std::string getHandle() const override { return "ping"; }
 
 private:
-    std::unique_ptr<Utils::UDPSocket> udpSocket_;
+    std::unique_ptr<Utils::UDPSocket> udpSocket;
 };
 
 } 

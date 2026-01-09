@@ -31,8 +31,8 @@ public:
     std::string getHandle() const override { return "tcp"; }
 
 private:
-    std::shared_ptr<Utils::TCPSocket> socket_;
-    mutable std::mutex mtx_;
+    std::shared_ptr<Utils::TCPSocket> socket;
+    mutable std::mutex mtx;
 };
 
 } 

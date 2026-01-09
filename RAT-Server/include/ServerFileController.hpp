@@ -28,13 +28,13 @@ public:
     bool handleJson(const nlohmann::json &response) override;
 
 private:
-    ServerManager *manager_;
+    ServerManager *manager;
     
     
-    nlohmann::json pendingResponse_;
-    bool hasResponse_ = false;
-    std::mutex responseMtx_;
-    std::condition_variable responseCv_;
+    nlohmann::json pendingResponse;
+    bool hasResponse = false;
+    std::mutex responseMtx;
+    std::condition_variable responseCv;
 };
 
 }

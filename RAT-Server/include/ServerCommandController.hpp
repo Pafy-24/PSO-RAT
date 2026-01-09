@@ -26,14 +26,14 @@ public:
     std::string getHandle() const override { return "bash"; }
 
 private:
-    ServerManager *manager_;
-    bool running_ = false;
-    std::unique_ptr<std::thread> stdinThread_;
-    std::string selectedClient_;
+    ServerManager *manager;
+    bool running = false;
+    std::unique_ptr<std::thread> stdinThread;
+    std::string selectedClient;
     
     
-    std::queue<nlohmann::json> bashResponses_;
-    mutable std::mutex bashMtx_;
+    std::queue<nlohmann::json> bashResponses;
+    mutable std::mutex bashMtx;
 
     pid_t spawnTerminal(const std::string &innerCmd);
     std::string processLine(const std::string &line);

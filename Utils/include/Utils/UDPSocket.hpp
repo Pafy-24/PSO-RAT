@@ -20,7 +20,7 @@ public:
     void close() override;
 
 private:
-    sf::UdpSocket socket_;
+    sf::UdpSocket socket;
 };
 
 } 

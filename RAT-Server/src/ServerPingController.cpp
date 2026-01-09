@@ -1,13 +1,12 @@
 #include "ServerPingController.hpp"
 #include "ServerManager.hpp"
-#include "ServerLogController.hpp"
 #include <thread>
 #include <chrono>
 
 namespace Server {
 
 ServerPingController::ServerPingController(ServerManager *manager) 
-    : IController(manager), manager_(manager), udpSocket_(std::make_unique<Utils::UDPSocket>()) {}
+    : IController(manager), manager(manager), udpSocket(std::make_unique<Utils::UDPSocket>()) {}
 
 ServerPingController::~ServerPingController() { 
     stop(); 
@@ -19,48 +18,44 @@ void ServerPingController::handle(const nlohmann::json &packet) {
 }
 
 void ServerPingController::start() {
-    if (running_) return;
-    running_ = true;
+    if (running) return;
+    running = true;
     
 }
 
 void ServerPingController::stop() {
-    running_ = false;
-    if (udpThread_ && udpThread_->joinable()) {
-        udpThread_->join();
+    running = false;
+    if (udpThread && udpThread->joinable()) {
+        udpThread->join();
     }
 }
 
 bool ServerPingController::startUdpResponder(unsigned short udpPort) {
-    if (!udpSocket_) return false;
+    if (!udpSocket) return false;
     
-    udpSocket_->setBlocking(false);
+    udpSocket->setBlocking(false);
     
-    if (!udpSocket_->bind(udpPort)) {
-        if (manager_) {
-            if (auto log = manager_->getSystemController("log")) {
-                static_cast<ServerLogController*>(log)->pushLog("Failed to bind UDP port " + std::to_string(udpPort) + " for discovery");
-            }
+    if (!udpSocket->bind(udpPort)) {
+        if (manager) {
+            manager->pushLog("Failed to bind UDP port " + std::to_string(udpPort) + " for discovery");
         }
         return false;
     }
     
-    running_ = true;
+    running = true;
     
-    udpThread_ = std::make_unique<std::thread>([this]() {
-        while (running_) {
+    udpThread = std::make_unique<std::thread>([this]() {
+        while (running) {
             std::string msg;
             sf::IpAddress sender(0u);
             unsigned short port = 0;
             
-            if (udpSocket_->receive(msg, sender, port)) {
+            if (udpSocket->receive(msg, sender, port)) {
                 if (msg == "ping") {
-                    udpSocket_->sendTo(std::string("pong"), sender, port);
+                    udpSocket->sendTo(std::string("pong"), sender, port);
                     
-                    if (manager_) {
-                        if (auto log = manager_->getSystemController("log")) {
-                            static_cast<ServerLogController*>(log)->pushLog("UDP discovery ping from " + sender.toString());
-                        }
+                    if (manager) {
+                        manager->pushLog("UDP discovery ping from " + sender.toString());
                     }
                 }
             } else {
@@ -69,10 +64,8 @@ bool ServerPingController::startUdpResponder(unsigned short udpPort) {
         }
     });
     
-    if (manager_) {
-        if (auto log = manager_->getSystemController("log")) {
-            static_cast<ServerLogController*>(log)->pushLog("UDP discovery responder started on port " + std::to_string(udpPort));
-        }
+    if (manager) {
+        manager->pushLog("UDP discovery responder started on port " + std::to_string(udpPort));
     }
     
     return true;

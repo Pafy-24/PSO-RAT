@@ -33,7 +33,7 @@ static std::string expandPath(const std::string &path) {
     return path;
 }
 
-ServerFileController::ServerFileController(ServerManager *manager) : IController(manager), manager_(manager) {}
+ServerFileController::ServerFileController(ServerManager *manager) : IController(manager), manager(manager) {}
 ServerFileController::~ServerFileController() = default;
 
 void ServerFileController::start() {}
@@ -45,15 +45,15 @@ void ServerFileController::handle(const nlohmann::json &packet) {
 }
 
 bool ServerFileController::handleJson(const nlohmann::json &response) {
-    std::lock_guard<std::mutex> lock(responseMtx_);
-    pendingResponse_ = response;
-    hasResponse_ = true;
-    responseCv_.notify_one();
+    std::lock_guard<std::mutex> lock(responseMtx);
+    pendingResponse = response;
+    hasResponse = true;
+    responseCv.notify_one();
     return true;
 }
 
 std::string ServerFileController::handleDownload(const std::string &clientName, const std::string &remotePath, const std::string &localPath) {
-    if (!manager_ || clientName.empty() || !manager_->hasClient(clientName)) return "Error\n";
+    if (!manager || clientName.empty() || !manager->hasClient(clientName)) return "Error\n";
     if (remotePath.empty() || localPath.empty()) return "Usage: download [client] <remote_path> <local_path>\n";
     
     nlohmann::json cmd;
@@ -61,7 +61,7 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
     cmd["action"] = "download";
     cmd["path"] = remotePath;
     
-    if (!manager_->sendRequest(clientName, cmd)) return "Failed\n";
+    if (!manager->sendRequest(clientName, cmd)) return "Failed\n";
     
     struct termios oldSettings, newSettings;
     tcgetattr(STDIN_FILENO, &oldSettings);
@@ -80,7 +80,7 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
     
     while (!received && !cancelled) {
         
-        if (manager_->receiveResponse(clientName, response, 100)) {
+        if (manager->receiveResponse(clientName, response, 100)) {
             received = true;
             break;
         }
@@ -135,10 +135,10 @@ std::string ServerFileController::handleDownload(const std::string &clientName, 
 }
 
 std::string ServerFileController::handleUpload(const std::string &clientName, const std::string &localPath, const std::string &remotePath) {
-    if (!manager_) return "Manager not available\n";
+    if (!manager) return "Manager not available\n";
     
     if (clientName.empty()) return "No client specified\n";
-    if (!manager_->hasClient(clientName)) return "Client not found\n";
+    if (!manager->hasClient(clientName)) return "Client not found\n";
     
     if (localPath.empty()) return "Usage: upload [client] <local_path> <remote_path>\n";
     if (remotePath.empty()) return "Usage: upload [client] <local_path> <remote_path>\n";
@@ -175,7 +175,7 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     cmd["path"] = actualRemotePath;
     cmd["data"] = encoded;
     
-    if (!manager_->sendRequest(clientName, cmd)) return "Failed\n";
+    if (!manager->sendRequest(clientName, cmd)) return "Failed\n";
     
     struct termios oldSettings, newSettings;
     tcgetattr(STDIN_FILENO, &oldSettings);
@@ -194,7 +194,7 @@ std::string ServerFileController::handleUpload(const std::string &clientName, co
     
     while (!received && !cancelled) {
         
-        if (manager_->receiveResponse(clientName, response, 100)) {
+        if (manager->receiveResponse(clientName, response, 100)) {
             received = true;
             break;
         }

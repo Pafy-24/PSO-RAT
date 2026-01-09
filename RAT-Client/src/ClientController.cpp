@@ -5,31 +5,31 @@ using json = nlohmann::json;
 
 namespace Client {
 
-ClientController::ClientController(std::shared_ptr<Utils::TCPSocket> socket) : socket_(std::move(socket)) {}
+ClientController::ClientController(std::shared_ptr<Utils::TCPSocket> socket) : socket(std::move(socket)) {}
 ClientController::~ClientController() = default;
 
 bool ClientController::isValid() const {
-    std::lock_guard<std::mutex> lock(mtx_);
-    return socket_ != nullptr;
+    std::lock_guard<std::mutex> lock(mtx);
+    return socket != nullptr;
 }
 
 bool ClientController::sendJson(const json &obj) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    if (!socket_) return false;
+    std::lock_guard<std::mutex> lock(mtx);
+    if (!socket) return false;
     try {
         std::string s = obj.dump();
         if (s.size() > 100 * 1024 * 1024) return false;
-        return socket_->send(s);
+        return socket->send(s);
     } catch (...) {
         return false;
     }
 }
 
 bool ClientController::receiveJson(json &out) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    if (!socket_) return false;
+    std::lock_guard<std::mutex> lock(mtx);
+    if (!socket) return false;
     std::string s;
-    if (!socket_->receive(s)) return false;
+    if (!socket->receive(s)) return false;
     if (s.empty()) return false;
     if (s.size() > 100 * 1024 * 1024) return false;
     try {

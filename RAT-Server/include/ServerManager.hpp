@@ -28,25 +28,16 @@ class ServerFileController;
  */
 class ServerManager {
 public:
-    
-    
-    
     static std::shared_ptr<ServerManager> getInstance();
     ServerManager(const ServerManager &) = delete;
     ServerManager &operator=(const ServerManager &) = delete;
     ~ServerManager();
-
-    
-    
     
     bool start(unsigned short port);        
     void stop();                            
     bool isRunning() const;                 
     int run(unsigned short port);           
 
-    
-    
-    
     bool addClient(const std::string &deviceName, std::unique_ptr<Utils::TCPSocket> socket);
     bool removeClient(const std::string &deviceName);
     Utils::TCPSocket *getClient(const std::string &deviceName);
@@ -54,68 +45,32 @@ public:
     std::string getClientIP(const std::string &name);
     bool hasClient(const std::string &name);
 
-    
-    
-    
     IController *getSystemController(const std::string &handle);
-    
-    
-    
-    
+   
     bool sendRequest(const std::string &clientName, const nlohmann::json &request);
     bool receiveResponse(const std::string &clientName, nlohmann::json &response, int timeoutMs = 5000);
 
-
-    
-    
-    
     void pushLog(const std::string &msg);
     bool popLog(std::string &out);
-    const std::string &logPath() const { return logPath_; }
+    std::string getLogPath() const;
 
-    
-    
-    
-    unsigned short port() const { return port_; }
+    unsigned short getPort() const { return port; }
 
 private:
     ServerManager();
 
-    
-    
-    
     inline static std::shared_ptr<ServerManager> instance;
     inline static std::mutex initMutex;
 
-    
-    
-    
-    std::unique_ptr<Utils::TCPSocket> listener_;    
-    unsigned short port_ = 0;                       
-    bool running_ = false;                          
-    mutable std::mutex mtx_;                        
+    std::unique_ptr<Utils::TCPSocket> listener;    
+    unsigned short port = 0;                       
+    bool running = false;                          
+    mutable std::mutex mtx;                        
 
+    std::unique_ptr<ClientManagement> clientManagement;
     
-    
-    
-    std::unique_ptr<ClientManagement> clientManagement_;
-    
-    
-    
-    
-    std::map<std::string, std::unique_ptr<IController>> controllers_;   
+    std::map<std::string, std::unique_ptr<IController>> controllers;   
 
-
-
-    
-    
-    
-    std::queue<std::string> logs_;                  
-    mutable std::mutex logMtx_;                     
-    std::string logPath_;                           
-
-    
-    
     
     void initializeControllers(unsigned short port); 
     void cleanupResources();                        

@@ -42,11 +42,11 @@ private:
     inline static std::mutex initMutex;
 
     
-    std::map<std::string, ClientController> controllers_;
+    std::map<std::string, ClientController> controllers;
     
-    std::shared_ptr<Utils::TCPSocket> socket_;
+    std::shared_ptr<Utils::TCPSocket> socket;
     
-    mutable std::mutex mtx_;
+    mutable std::mutex mtx;
 };
 
 } 

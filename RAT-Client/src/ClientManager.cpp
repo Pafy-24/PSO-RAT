@@ -29,23 +29,23 @@ std::shared_ptr<ClientManager> ClientManager::getInstance() {
 
 ClientManager::ClientManager() = default;
 ClientManager::~ClientManager() {
-    std::lock_guard<std::mutex> lock(mtx_);
+    std::lock_guard<std::mutex> lock(mtx);
     
-    if (socket_) socket_->close();
-    socket_.reset();
-    controllers_.clear();
+    if (socket) socket->close();
+    socket.reset();
+    controllers.clear();
 }
 
 bool ClientManager::connectTo(const std::string &name, const sf::IpAddress &address, unsigned short port) {
-    std::lock_guard<std::mutex> lock(mtx_);
+    std::lock_guard<std::mutex> lock(mtx);
     
     if (name.empty()) return false;
     if (port == 0) return false;
-    if (socket_) return false;
+    if (socket) return false;
     
-    socket_ = std::make_shared<Utils::TCPSocket>();
-    if (!socket_->connect(address, port)) {
-        socket_.reset();
+    socket = std::make_shared<Utils::TCPSocket>();
+    if (!socket->connect(address, port)) {
+        socket.reset();
         return false;
     }
     
@@ -60,37 +60,37 @@ bool ClientManager::connectTo(const std::string &name, const sf::IpAddress &addr
     }
     
     std::string jsonStr = handshake.dump();
-    if (!socket_->send(jsonStr)) {
-        socket_->close();
-        socket_.reset();
+    if (!socket->send(jsonStr)) {
+        socket->close();
+        socket.reset();
         return false;
     }
     
-    controllers_.emplace(std::piecewise_construct,
+    controllers.emplace(std::piecewise_construct,
                          std::forward_as_tuple(name),
-                         std::forward_as_tuple(socket_));
+                         std::forward_as_tuple(socket));
     return true;
 }
 
 void ClientManager::disconnect(const std::string &name) {
-    std::lock_guard<std::mutex> lock(mtx_);
+    std::lock_guard<std::mutex> lock(mtx);
     
-    if (socket_) {
-        socket_->close();
-        socket_.reset();
+    if (socket) {
+        socket->close();
+        socket.reset();
     }
-    controllers_.erase(name);
+    controllers.erase(name);
 }
 
 bool ClientManager::isConnected(const std::string &name) const {
-    std::lock_guard<std::mutex> lock(mtx_);
-    return socket_ != nullptr && controllers_.find(name) != controllers_.end();
+    std::lock_guard<std::mutex> lock(mtx);
+    return socket != nullptr && controllers.find(name) != controllers.end();
 }
 
 ClientController *ClientManager::getController(const std::string &name) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    auto it = controllers_.find(name);
-    if (it == controllers_.end()) return nullptr;
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = controllers.find(name);
+    if (it == controllers.end()) return nullptr;
     return &it->second;
 }
 
