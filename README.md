@@ -1,81 +1,231 @@
-# PSO-RAT — Remote Administration Tool (simplificat)
+# PSO-RAT — Remote Administration Tool
 
-Acest repository conține un prototip de RAT (Remote Administration Tool) scris în C++17. Scopul proiectului este educațional: demonstrăm un server care acceptă clienți, o arhitectură bazată pe "managers" și "controllers", comunicare JSON și un canal administrativ pentru comenzi și vizualizare log-uri.
+**Proiect de semestru pentru materia Proiectarea Sistemelor de Operare (PSO)**
 
-Structură importantă
-- `RAT-Server/` — codul serverului; gestionează conexiunile, controlează clienții și oferă controale administrative.
-- `RAT-Client/` — codul clientului care se conectează la server și execută comenzi trimise (executeshell → return stdout + exitcode).
-- `Utils/` — utilitare comune (wrapper TCP, socket helpers).
-- `build_make/` — rezultate de build (binare: `rat_server`, `rat_client`, `log_script`, `libutils.so`).
+## Descriere
 
-Principalele caracteristici
-- Comunicare JSON între server și client (folosind nlohmann::json).
-- Manager/Controller pattern: `ServerManager` deține socket-urile (clients_) și obiectele `IController` (`controllers_`).
-- Canale administrative:
-	- interfață CLI (stdin) pe server pentru comenzi precum `list`, `choose`, `kill`, `bash`, `showlogs`, `quit`;
-	- afișare log-urilor printr-un mic utilitar `log_script` care poate rula într-un terminal/PTY.
-- Mecanism PTY pentru vizualizarea log-urilor în medii headless (fallback la `tmux` sau PTY attach).
+Acest proiect implementează un Remote Administration Tool (RAT) educational scris în C++17, demonstrând conceptele fundamentale învățate în cadrul cursului PSO:
 
-Prerechizite
-- Linux (testat pe distribuții Debian/Ubuntu)
-- g++ (C++17), make
-- SFML (doar modulul `sfml-network`) instalat în sistem
-- librării de bază (libstdc++, etc.)
+- **Gestionarea proceselor și thread-uri**: Arhitectură multi-threaded cu server concurrent
+- **Sincronizare (mutex)**: Protejarea resurselor partajate între thread-uri
+- **Socket-uri TCP/UDP**: Comunicare client-server prin SFML Network
+- **Comunicare inter-proces**: Utilizarea pipe-urilor pentru executarea comenzilor shell
+- **Semnale de sistem**: Gestionarea închiderii gracioase și cleanup-ul resurselor
+- **Gestionarea memoriei**: Smart pointers (`unique_ptr`, `shared_ptr`) pentru management RAII
 
-Compilare
-1. Din directorul rădăcină al repo:
+## Concepte PSO Demonstrate
 
+### 1. **Socket-uri și Comunicare Rețea**
+- Implementare wrapper TCP/UDP peste SFML (`Utils/TCPSocket.cpp`, `Utils/UDPSocket.cpp`)
+- Server TCP non-blocking cu acceptare asincronă de clienți
+- Protocol JSON pentru comunicare structurată client-server
+- Keep-alive UDP pentru menținerea conexiunii
+
+### 2. **Arhitectură Multi-Threading**
+- Thread dedicat pentru input administrativ (stdin)
+- Thread-uri pentru ping/keep-alive
+- Gestionare concurentă a mai multor clienți conectați simultan
+- Sincronizare thread-safe cu `std::mutex` și `std::lock_guard`
+
+### 3. **Pipe-uri și Execuție Comenzi Shell**
+- Folosirea `popen()` pentru executarea comenzilor bash
+- Capturarea stdout/stderr prin pipe-uri
+- Returnarea output-ului și exit code către server
+
+### 4. **Gestionarea Proceselor**
+- `fork()` și `exec()` pentru spawn-area terminalelor externe
+- `waitpid()` pentru gestionarea proceselor copil
+- Detașare proces cu `setsid()` pentru daemonizare
+
+### 5. **Pattern-uri de Design**
+- **Singleton**: `ServerManager` — instanță unică pentru gestionarea serverului
+- **Controller Pattern**: Separarea logicii în controller-e specializate
+- **RAII**: Smart pointers pentru gestionarea automată a memoriei
+
+## Structura Proiectului
+
+```
+PSO-RAT/
+├── RAT-Server/          # Server-ul central
+│   ├── src/
+│   │   ├── ServerManager.cpp           # Manager principal (singleton)
+│   │   ├── ClientManagement.cpp        # Gestionare clienți (thread-safe)
+│   │   ├── ServerCommandController.cpp # CLI administrativ
+│   │   ├── ServerFileController.cpp    # Transfer fișiere
+│   │   ├── ServerPingController.cpp    # Keep-alive UDP
+│   │   └── ServerLogController.cpp     # Logging centralizat
+│   └── include/
+├── RAT-Client/          # Client-ul
+│   ├── src/
+│   │   ├── ClientManager.cpp           # Orchestrator client
+│   │   ├── ClientBashController.cpp    # Execuție comenzi (pipe-uri)
+│   │   ├── ClientFileController.cpp    # Upload/download
+│   │   ├── ClientScreenshotController.cpp
+│   │   └── ClientPingController.cpp
+│   └── include/
+├── Utils/               # Librării comune
+│   ├── src/
+│   │   ├── TCPSocket.cpp              # Wrapper TCP (SFML)
+│   │   └── UDPSocket.cpp              # Wrapper UDP (SFML)
+│   └── include/Utils/
+│       └── Base64.hpp                  # Header-only encoding
+├── build_make/          # Binare compilate
+│   ├── rat_server
+│   ├── rat_client
+│   └── libutils.so
+└── CLASS_DIAGRAM.md     # Documentație arhitectură
+```
+
+## Funcționalități Implementate
+
+### Server
+- **Acceptare clienți**: Listener TCP non-blocking, înregistrare automată
+- **Management centralizat**: Clasa `ClientManagement` gestionează harta clienților (thread-safe)
+- **Comenzi administrative**: 
+  - `list` — listează clienții conectați
+  - `choose <client>` — selectează client implicit
+  - `bash <client> <cmd>` — execută comandă shell pe client
+  - `download <client> <remote> <local>` — descarcă fișier
+  - `upload <client> <local> <remote>` — încarcă fișier
+  - `screenshot <client>` — capturează ecran
+  - `kill <client>` / `killall` — deconectează clienți
+  - `showlogs` — vizualizare log-uri în terminal
+  - `quit` — oprește serverul
+- **Logging centralizat**: `/tmp/rat_server.log` cu thread-safe append
+
+### Client
+- **Auto-conectare**: Se conectează la server cu hostname, OS, kernel
+- **Execuție comenzi**: Folosește `popen()` pentru comenzi bash
+- **Transfer fișiere**: Upload/download cu encoding Base64
+- **Screenshot**: Capturare ecran cu `scrot`/`import`/`gnome-screenshot`
+- **Keep-alive**: Răspunde la ping-uri UDP
+
+## Prerechizite
+
+- **OS**: Linux (testat pe Arch, Ubuntu, Debian)
+- **Compilator**: g++ cu suport C++17
+- **Build system**: GNU Make
+- **Librării**:
+  - SFML Network, System, Window, Graphics (`libsfml-dev`)
+  - nlohmann-json (header-only, inclus în sistem sau `/usr/include`)
+
+```bash
+# Ubuntu/Debian
+sudo apt install build-essential libsfml-dev nlohmann-json3-dev
+
+# Arch Linux
+sudo pacman -S base-devel sfml nlohmann-json
+```
+
+## Compilare și Rulare
+
+### 1. Compilare
 ```bash
 make
 ```
 
-Aceasta construiește binarele în `build_make/`:
-- `build_make/rat_server` — serverul
-- `build_make/rat_client` — clientul
-- `build_make/log_script` — utilitar pentru "tail" pe log (folosit de showlogs)
+Binarele sunt generate în `build_make/`:
+- `rat_server` — serverul
+- `rat_client` — clientul  
+- `libutils.so` — librărie partajată
 
-Rulare (exemplu)
-1. Pornește serverul (foreground) pe portul 5555 implicit:
-
+### 2. Rulare Server
 ```bash
 ./build_make/rat_server
 ```
+Server-ul pornește pe portul 5555 implicit.
 
-2. Pornește un client într-un alt terminal:
-
+### 3. Rulare Client
 ```bash
 ./build_make/rat_client
 ```
+Clientul se conectează la `127.0.0.1:5555`.
 
-Comenzi administrative (din terminalul serverului)
-- `list` — listează clienții conectați
-- `choose <nume_client>` — marchează clientul (comandele ulterioare pot folosi acest client explicit)
-- `kill <nume_client>` — deconectează și elimină clientul
-- `bash <nume_client> <comandă>` — trimite comanda către client; clientul execută comanda și trimite înapoi JSON cu `out` și `ret` (stdout și codul de ieșire)
-- `showlogs` — pornește `log_script` (într-un terminal/PTY) care face `tail -F` pe fișierul de log al serverului (implicit `/tmp/rat_server.log`)
-- `quit` — oprește serverul
-
-Notă: în această implementare comenzile administrative sunt citite din stdin (CLI server). Există și un mecanism pentru a porni `log_script` într-un terminal GUI (gnome-terminal/konsole/xterm) sau într-o sesiune `tmux` când nu există GUI.
-
-Locația și formatele de log
-- Mesajele serverului sunt scrise în `ServerManager::logPath()` (implicit `/tmp/rat_server.log`).
-- `log_script` poate fi rulat direct pentru a vizualiza fișierul în timp real:
+## Exemple de Utilizare
 
 ```bash
-./build_make/log_script /tmp/rat_server.log
+# Pe server
+=== RAT Server Control ===
+Type 'help' for available commands
+
+> list
+Clients:
+  - arch_0 (127.0.0.1:45678)
+
+> bash arch_0 uname -a
+Linux hostname 6.1.0-arch1-1 #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux
+
+> download arch_0 /etc/hostname ./hostname.txt
+Downloaded 9 bytes to ./hostname.txt
+
+> screenshot arch_0
+Screenshot saved to /tmp/ss_arch_0_1704672345.png
+
+> kill arch_0
+Killed arch_0
 ```
 
-Considerații de securitate
-- Acest proiect este un prototip educațional. Nu folosi acest cod pe rețele sau mașini de producție fără a implementa autentificare, criptare și controale de acces adecvate.
+## Arhitectură și Sincronizare
 
-Sugestii de dezvoltare
-- Convertirea socket-urilor din `unique_ptr` în `shared_ptr` pentru a simplifica gestiunea duratei de viață între manager și controller.
-- Îmbunătățirea protocoalelor admin (folosirea JSON pentru cereri/răspunsuri) pentru interoperabilitate cu UI-uri externe.
-- Înlocuirea buclelor ocupate de log cu `condition_variable` pentru a reduce consumul CPU.
+### Thread-Safety
+- **ClientManagement**: `std::mutex` protejează harta `clients_`
+- **Logging**: `std::mutex` pentru accesul la queue-ul de log-uri
+- **Socket I/O**: Operații blocking cu timeout pentru evitarea deadlock-urilor
 
-Cum contribui
-- Creează un branch, fă modificări mici și deschide un pull request. Adaugă descriere clară și un mic test/pași de reproducere.
+### Pattern de Comunicare
+1. **Request-Response sincron**:
+   ```
+   Server → sendRequest(client, JSON)
+   Server → receiveResponse(client, JSON&, timeout)
+   ```
 
-Licență
-- Proiect experimental — folosește-l responsabil. (Adaugă o licență în repo dacă dorești claritate juridică.)
+2. **Protocolul JSON**:
+   ```json
+   Request: {"controller": "bash", "cmd": "ls -la"}
+   Response: {"output": "...", "exitcode": 0}
+   ```
+
+### Gestionarea Memoriei
+- **Smart pointers**: `unique_ptr` pentru ownership exclusiv (sockets, controllers)
+- **RAII**: Destructorii asigură cleanup-ul automat (close socket, join thread)
+- **No raw pointers**: Eliminarea memory leaks prin ownership clar
+
+## Probleme Cunoscute și Limitări
+
+- **Securitate**: Fără autentificare sau criptare (proiect educational!)
+- **Timeout-uri**: Socket-urile pot bloca dacă clientul nu răspunde
+- **Threading**: Nu există pool de thread-uri (un thread per funcționalitate)
+- **Protocol**: JSON text-based (overhead mai mare decât binar)
+
+## Concepte PSO Aplicate
+
+| Concept | Implementare | Fișier |
+|---------|-------------|---------|
+| **Socket TCP** | Wrapper SFML, listener non-blocking | `Utils/TCPSocket.cpp` |
+| **Socket UDP** | Keep-alive ping/pong | `Utils/UDPSocket.cpp` |
+| **Thread-uri** | stdin thread, ping threads | `ServerCommandController.cpp` |
+| **Mutex** | Protecție `clients_`, `logs_` | `ServerManager.cpp` |
+| **Pipe-uri** | `popen()` pentru comenzi shell | `ClientBashController.cpp` |
+| **fork/exec** | Spawn terminal pentru logs | `ServerCommandController.cpp` |
+| **Semnale** | Graceful shutdown | `main.cpp` |
+| **Smart pointers** | `unique_ptr`, `shared_ptr` | Throughout |
+
+## Diagrame
+
+Vezi [CLASS_DIAGRAM.md](CLASS_DIAGRAM.md) pentru:
+- Diagrama de clase (Mermaid)
+- Flow-uri de comunicare
+- Relații între componente
+
+## Referințe
+
+- Curs PSO: Proiectarea Sistemelor de Operare
+- SFML Network: https://www.sfml-dev.org/documentation/2.6.0/group__network.php
+- nlohmann/json: https://json.nlohmann.me/
+- POSIX Threads: `man pthreads`, `man mutex`
+- Socket Programming: `man 2 socket`, `man 2 bind`, `man 2 listen`
+
+## Autor
+
+Proiect realizat pentru materia PSO, semestrul 2, 2025-2026.
 
